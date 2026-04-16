@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "${FRONTEND_PORT:-80}:80"
+    env_file:
+      - .env
+    volumes:
+      - ./frontend:/app
+    depends_on:
+      - backend
+
+networks:
+  default:
+    name: fct-network
