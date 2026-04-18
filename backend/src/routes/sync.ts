@@ -1,4 +1,14 @@
 import { Router } from 'express';
+import { runSync, getSyncStatus } from '../services/notion';
 
 export const syncRouter = Router();
-// TODO: POST /api/sync — manual Notion sync trigger
+
+syncRouter.post('/', async (_req, res, next) => {
+  try {
+    await runSync(true);
+    const { syncedAt, itemCount } = getSyncStatus();
+    res.json({ syncedAt, itemCount });
+  } catch (err) {
+    next(err);
+  }
+});
