@@ -2,13 +2,10 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
 import db from '../db';
+import { IdSchema, PeriodStr } from '../lib/validate';
 import type { EnvelopeWithOverride, EnvelopeOverride, BudgetItem } from '../types';
 
 export const envelopesRouter = Router();
-
-// ---------------------------------------------------------------------------
-// DB row shapes
-// ---------------------------------------------------------------------------
 
 interface ItemRow {
   id: string;
@@ -32,10 +29,6 @@ interface OverrideRow {
   override_amount: number;
 }
 
-// ---------------------------------------------------------------------------
-// Transformers
-// ---------------------------------------------------------------------------
-
 function toOverride(row: OverrideRow): EnvelopeOverride {
   return {
     id: row.id,
@@ -47,29 +40,25 @@ function toOverride(row: OverrideRow): EnvelopeOverride {
 
 function toEnvelope(item: ItemRow, overrides: OverrideRow[]): EnvelopeWithOverride {
   const base: BudgetItem = {
-    id:              item.id,
-    notionPageId:    item.notion_page_id,
-    name:            item.name,
-    category:        item.category,
-    type:            item.type as BudgetItem['type'],
-    frequency:       item.frequency as BudgetItem['frequency'],
-    dueDate:         item.due_date,
-    isVariable:      item.is_variable === 1,
-    bucket:          item.bucket as BudgetItem['bucket'],
-    payment:         item.payment as BudgetItem['payment'],
-    forecastAmount:  item.forecast_amount,
-    deletedAt:       item.deleted_at,
+    id:             item.id,
+    notionPageId:   item.notion_page_id,
+    name:           item.name,
+    category:       item.category,
+    type:           item.type as BudgetItem['type'],
+    frequency:      item.frequency as BudgetItem['frequency'],
+    dueDate:        item.due_date,
+    isVariable:     item.is_variable === 1,
+    bucket:         item.bucket as BudgetItem['bucket'],
+    payment:        item.payment as BudgetItem['payment'],
+    forecastAmount: item.forecast_amount,
+    deletedAt:      item.deleted_at,
   };
   return { ...base, overrides: overrides.map(toOverride) };
 }
 
-// ---------------------------------------------------------------------------
-// Prepared statements
-// ---------------------------------------------------------------------------
-
-const stmtItems     = db.prepare('SELECT * FROM budget_items WHERE deleted_at IS NULL ORDER BY name');
+const stmtItems    = db.prepare('SELECT * FROM budget_items WHERE deleted_at IS NULL ORDER BY name');
 const stmtOverrides = db.prepare('SELECT * FROM envelope_overrides');
-const stmtFindItem  = db.prepare('SELECT id FROM budget_items WHERE id = ? AND deleted_at IS NULL');
+const stmtFindItem = db.prepare('SELECT id FROM budget_items WHERE id = ? AND deleted_at IS NULL');
 
 const stmtUpsertOverride = db.prepare(`
   INSERT INTO envelope_overrides (id, budget_item_id, period, override_amount)
@@ -87,25 +76,12 @@ const stmtGetOverridesByItem = db.prepare(
   'SELECT * FROM envelope_overrides WHERE budget_item_id = ?'
 );
 
-// ---------------------------------------------------------------------------
-// Validation schemas
-// ---------------------------------------------------------------------------
-
-const IdSchema      = z.string().uuid('id must be a valid UUID');
-const PeriodSchema  = z.string().regex(/^\d{4}-\d{2}$/, 'period must be YYYY-MM');
-
 const OverrideBodySchema = z.object({
-  period:         PeriodSchema,
+  period:         PeriodStr,
   overrideAmount: z.number().nonnegative('overrideAmount must be >= 0'),
 });
 
-const OverrideDeleteSchema = z.object({
-  period: PeriodSchema,
-});
-
-// ---------------------------------------------------------------------------
-// GET /api/envelopes
-// ---------------------------------------------------------------------------
+const OverrideDeleteSchema = z.object({ period: PeriodStr });
 
 envelopesRouter.get('/', (_req, res) => {
   const items     = stmtItems.all() as ItemRow[];
@@ -117,13 +93,8 @@ envelopesRouter.get('/', (_req, res) => {
     byItem.get(o.budget_item_id)!.push(o);
   }
 
-  const envelopes = items.map(item => toEnvelope(item, byItem.get(item.id) ?? []));
-  res.json({ envelopes });
+  res.json({ envelopes: items.map(item => toEnvelope(item, byItem.get(item.id) ?? [])) });
 });
-
-// ---------------------------------------------------------------------------
-// PUT /api/envelopes/:id/override
-// ---------------------------------------------------------------------------
 
 envelopesRouter.put('/:id/override', (req, res) => {
   const idResult = IdSchema.safeParse(req.params.id);
@@ -136,21 +107,18 @@ envelopesRouter.put('/:id/override', (req, res) => {
     return res.status(400).json({ error: bodyResult.error.errors[0].message, code: 'VALIDATION_ERROR' });
   }
 
-  const { period, overrideAmount } = bodyResult.data;
-  const item = stmtFindItem.get(idResult.data);
-  if (!item) {
+  if (!stmtFindItem.get(idResult.data)) {
     return res.status(404).json({ error: 'Budget item not found', code: 'NOT_FOUND' });
   }
 
+  const { period, overrideAmount } = bodyResult.data;
   stmtUpsertOverride.run({ id: uuidv4(), budget_item_id: idResult.data, period, override_amount: overrideAmount });
 
+  // Re-query to get the correct id — ON CONFLICT DO UPDATE preserves the existing row's id,
+  // not the new UUID we generated for the insert path.
   const overrides = stmtGetOverridesByItem.all(idResult.data) as OverrideRow[];
   return res.json({ overrides: overrides.map(toOverride) });
 });
-
-// ---------------------------------------------------------------------------
-// DELETE /api/envelopes/:id/override?period=YYYY-MM
-// ---------------------------------------------------------------------------
 
 envelopesRouter.delete('/:id/override', (req, res) => {
   const idResult = IdSchema.safeParse(req.params.id);
@@ -163,11 +131,8 @@ envelopesRouter.delete('/:id/override', (req, res) => {
     return res.status(400).json({ error: queryResult.error.errors[0].message, code: 'VALIDATION_ERROR' });
   }
 
-  const item = stmtFindItem.get(idResult.data);
-  if (!item) {
-    return res.status(404).json({ error: 'Budget item not found', code: 'NOT_FOUND' });
-  }
-
+  // result.changes === 0 covers both "item not found" and "no override for this period" —
+  // no need to pre-check item existence separately.
   const result = stmtDeleteOverride.run(idResult.data, queryResult.data.period);
   if (result.changes === 0) {
     return res.status(404).json({ error: 'Override not found', code: 'NOT_FOUND' });

@@ -2,13 +2,10 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
 import db from '../db';
+import { IdSchema, DateStr } from '../lib/validate';
 import type { ReconciliationRecord } from '../types';
 
 export const reconciliationRouter = Router();
-
-// ---------------------------------------------------------------------------
-// DB row shape
-// ---------------------------------------------------------------------------
 
 interface ReconRow {
   id: string;
@@ -32,13 +29,6 @@ function toRecord(row: ReconRow): ReconciliationRecord {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Validation schemas
-// ---------------------------------------------------------------------------
-
-const IdSchema   = z.string().uuid('id must be a valid UUID');
-const DateStr    = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'must be YYYY-MM-DD');
-
 const PostSchema = z.object({
   budgetItemId:   z.string().uuid(),
   date:           DateStr,
@@ -59,10 +49,6 @@ const PatchSchema = z
     { message: 'At least one field must be provided' }
   );
 
-// ---------------------------------------------------------------------------
-// Prepared statements
-// ---------------------------------------------------------------------------
-
 const stmtAll    = db.prepare('SELECT * FROM reconciliation ORDER BY date DESC');
 const stmtById   = db.prepare('SELECT * FROM reconciliation WHERE id = ?');
 const stmtInsert = db.prepare(`
@@ -74,18 +60,10 @@ const stmtItemExists = db.prepare(
   'SELECT id FROM budget_items WHERE id = ? AND deleted_at IS NULL'
 );
 
-// ---------------------------------------------------------------------------
-// GET /api/reconciliation
-// ---------------------------------------------------------------------------
-
 reconciliationRouter.get('/', (_req, res) => {
   const rows = stmtAll.all() as ReconRow[];
   res.json({ records: rows.map(toRecord) });
 });
-
-// ---------------------------------------------------------------------------
-// POST /api/reconciliation
-// ---------------------------------------------------------------------------
 
 reconciliationRouter.post('/', (req, res) => {
   const result = PostSchema.safeParse(req.body);
@@ -100,22 +78,27 @@ reconciliationRouter.post('/', (req, res) => {
   }
 
   const id = uuidv4();
+  const noteVal = note ?? null;
   stmtInsert.run({
     id,
     budget_item_id: budgetItemId,
     date,
     forecast_amount: forecastAmount,
     actual_amount:   actualAmount,
-    note:            note ?? null,
+    note:            noteVal,
   });
 
-  const row = stmtById.get(id) as ReconRow;
-  return res.status(201).json({ record: toRecord(row) });
+  const record: ReconciliationRecord = {
+    id,
+    budgetItemId,
+    date,
+    forecastAmount,
+    actualAmount,
+    note: noteVal,
+    delta: actualAmount - forecastAmount,
+  };
+  return res.status(201).json({ record });
 });
-
-// ---------------------------------------------------------------------------
-// PATCH /api/reconciliation/:id
-// ---------------------------------------------------------------------------
 
 reconciliationRouter.patch('/:id', (req, res) => {
   const idResult = IdSchema.safeParse(req.params.id);
@@ -153,10 +136,6 @@ reconciliationRouter.patch('/:id', (req, res) => {
   const updated = stmtById.get(idResult.data) as ReconRow;
   return res.json({ record: toRecord(updated) });
 });
-
-// ---------------------------------------------------------------------------
-// DELETE /api/reconciliation/:id
-// ---------------------------------------------------------------------------
 
 reconciliationRouter.delete('/:id', (req, res) => {
   const idResult = IdSchema.safeParse(req.params.id);
