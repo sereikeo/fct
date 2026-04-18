@@ -10,8 +10,7 @@ export type SyncStatus = {
 };
 
 const EXPECTED_PROPERTIES = [
-  'Name', 'Type', 'Category', 'Amount',
-  'Frequency', 'Due Date', 'Variable', 'Payment', 'Tags',
+  'Bill', 'Amount', 'Budget', 'Payment', 'Due', 'Recur Interval', 'Recur Unit', 'Tags',
 ];
 
 let syncStatus: SyncStatus = { syncedAt: null, itemCount: 0 };
@@ -39,10 +38,6 @@ function extractDate(prop: unknown): string | null {
   return (prop as any)?.date?.start ?? null;
 }
 
-function extractCheckbox(prop: unknown): boolean {
-  return (prop as any)?.checkbox ?? false;
-}
-
 function extractMultiSelect(prop: unknown): string[] {
   return (prop as any)?.multi_select?.map((t: { name: string }) => t.name) ?? [];
 }
@@ -62,27 +57,38 @@ function validateProperties(props: Record<string, unknown>): string[] {
 function mapPageToRow(page: PageObjectResponse): Record<string, unknown> | null {
   const p = page.properties;
 
-  const name = extractTitle(p['Name']);
+  const name = extractTitle(p['Bill']);
   if (!name) return null;
-
-  const type = extractSelect(p['Type'])?.toLowerCase();
-  const frequency = extractSelect(p['Frequency'])?.toLowerCase();
-  const dueDate = extractDate(p['Due Date']);
-
-  // Core scheduling fields are required for the cash engine to work
-  if (!type || !frequency || !dueDate) return null;
 
   const tags = extractMultiSelect(p['Tags']);
   const bucket = tags.some(t => t.toLowerCase().includes('maple')) ? 'maple' : 'personal';
+  const isVariable = tags.includes('Variable expense') ? 1 : 0;
+
+  // Budget select: 'Income', 'Expense', 'subscription' → normalise to type
+  const budget = extractSelect(p['Budget'])?.toLowerCase() ?? 'expense';
+  const type =
+    budget === 'income' ? 'income'
+    : budget === 'transfer' ? 'transfer'
+    : 'expense';
+
+  // Recur Unit select: 'Month(s)', 'Week(s)', 'Year(s)', 'Day(s)'
+  // Map to the engine's Frequency enum
+  const recurUnit = extractSelect(p['Recur Unit']) ?? '';
+  const frequency =
+    recurUnit.startsWith('Week') ? 'weekly'
+    : recurUnit.startsWith('Fortnightly') || recurUnit.startsWith('Fortnight') ? 'fortnightly'
+    : recurUnit.startsWith('Year') ? 'annual'
+    : recurUnit.startsWith('Day') ? 'weekly'   // fallback — treat daily as weekly
+    : 'monthly';                                 // Month(s) or unknown
 
   return {
     notion_page_id: page.id,
     name,
-    category: extractSelect(p['Category']),
+    category: null,
     type,
     frequency,
-    due_date: dueDate,
-    is_variable: extractCheckbox(p['Variable']) ? 1 : 0,
+    due_date: extractDate(p['Due']) ?? null,
+    is_variable: isVariable,
     bucket,
     payment: extractSelect(p['Payment']) ?? 'Direct Debit',
     forecast_amount: extractNumber(p['Amount']),
