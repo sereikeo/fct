@@ -277,6 +277,8 @@ export function computeCashFlow(from: string, to: string): CashFlowEntry[] {
   const ccFrom = addDays(fromDate, -35);
 
   for (const item of items) {
+    if (!item.frequency || !item.type || !item.due_date) continue;
+
     if (item.payment === 'Credit') {
       const occs = buildOccurrences(item, ccFrom, toDate, overrideMap, reconMap);
       for (const occ of occs) {
