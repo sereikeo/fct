@@ -94,6 +94,7 @@ button{font-family:inherit}
 
 /* Chart card */
 .curve-card{padding:24px 26px 16px}
+.horizon-row{display:flex;justify-content:flex-end;margin-bottom:14px}
 .curve-top{display:flex;gap:36px;align-items:flex-end;justify-content:space-between;margin-bottom:8px}
 .stat{display:flex;flex-direction:column;gap:6px;min-width:0}
 .stat .lbl{font-size:11px;color:var(--mute);text-transform:uppercase;letter-spacing:0.08em}

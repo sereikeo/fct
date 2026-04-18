@@ -232,6 +232,20 @@ export default function CashFlowChart({
 
   return (
     <div className="card curve-card">
+      <div className="horizon-row">
+        <div className="seg" role="group">
+          {([{ label: '1M', days: 30 }, { label: '3M', days: 90 }, { label: '6M', days: 180 }, { label: '1Y', days: 365 }]).map(({ label, days }) => (
+            <button
+              key={label}
+              aria-pressed={horizon === days ? 'true' : 'false'}
+              onClick={() => onHorizonChange(days)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="curve-top">
         <div className="stat">
           <div className="lbl">
@@ -282,20 +296,7 @@ export default function CashFlowChart({
           </div>
         </div>
 
-        <div style={{ marginLeft: 'auto', alignSelf: 'center', display: 'flex', alignItems: 'center', gap: 14 }}>
-          <span className="pip mono">+{si}d</span>
-          <div className="seg" role="group">
-            {([{ label: '1M', days: 30 }, { label: '3M', days: 90 }, { label: '6M', days: 180 }, { label: '1Y', days: 365 }]).map(({ label, days }) => (
-              <button
-                key={label}
-                aria-pressed={horizon === days ? 'true' : 'false'}
-                onClick={() => onHorizonChange(days)}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </div>
+        <span className="pip mono" style={{ marginLeft: 'auto', alignSelf: 'center' }}>+{si}d</span>
       </div>
 
       <div className="svg-wrap">
