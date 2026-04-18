@@ -1,17 +1,8 @@
-{
-  admin off
-}
-
 :80 {
-  encode gzip
-
-  handle /api/* {
-    reverse_proxy backend:3001
-  }
-
-  handle {
-    root * /srv
-    try_files {path} /index.html
-    file_server
-  }
+    handle /api/* {
+        reverse_proxy fct_backend:3001
+    }
+    handle {
+        reverse_proxy fct_frontend:80
+    }
 }
