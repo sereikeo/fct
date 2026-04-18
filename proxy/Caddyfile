@@ -1,6 +1,6 @@
 :80 {
     handle /api/* {
-        reverse_proxy fct_backend:3001
+        reverse_proxy backend:3001
     }
     handle {
         root * /srv
