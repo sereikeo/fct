@@ -32,6 +32,7 @@ export interface ReconciliationRecord {
   forecastAmount: number;
   actualAmount: number;
   note: string | null;
+  delta: number;
 }
 
 export interface LineItem {
