@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { getHealth, postSync, QUERY_KEYS } from '../services/api';
 import { useState } from 'react';
+import { getHealth, postSync, QUERY_KEYS } from '../services/api';
 
 function relativeTime(iso: string | null): string {
   if (!iso) return 'never';
@@ -20,10 +20,9 @@ export default function SyncStatus() {
     refetchInterval: 60_000,
   });
 
-  const stale =
-    data?.notionSyncedAt
-      ? Date.now() - new Date(data.notionSyncedAt).getTime() > 10 * 60 * 1000
-      : true;
+  const stale = !data?.notionSyncedAt ||
+    Date.now() - new Date(data.notionSyncedAt).getTime() > 10 * 60 * 1000;
+  const hasError = !!data?.syncError;
 
   async function handleSync() {
     setSyncing(true);
@@ -35,26 +34,30 @@ export default function SyncStatus() {
     }
   }
 
+  const dotClass = `dot${hasError ? ' err' : stale ? ' stale' : ''}`;
+
   return (
-    <div className="flex items-center gap-3">
-      <div className="flex items-center gap-2 bg-gray-800 rounded-full px-3 py-1.5 text-xs">
-        <span
-          className={`w-2 h-2 rounded-full ${stale ? 'bg-yellow-400' : 'bg-green-400'}`}
-        />
-        <span className="text-gray-300">
-          Notion · synced {relativeTime(data?.notionSyncedAt ?? null)}
-        </span>
-        {data?.syncError && (
-          <span className="text-red-400 ml-1" title={data.syncError}>⚠</span>
-        )}
+    <>
+      <div className="sync">
+        <span className={dotClass} />
+        <span>Notion · synced {relativeTime(data?.notionSyncedAt ?? null)}</span>
+        {hasError && <span title={data!.syncError} style={{ color: 'var(--accent)', marginLeft: 4 }}>⚠</span>}
       </div>
       <button
+        className="btn ghost"
         onClick={handleSync}
         disabled={syncing}
-        className="text-xs bg-gray-700 hover:bg-gray-600 disabled:opacity-50 text-gray-300 rounded-full px-3 py-1.5 transition-colors"
+        style={{ fontSize: 12, padding: '6px 12px' }}
       >
-        {syncing ? 'Syncing…' : 'Sync now'}
+        {syncing ? 'Syncing…' : (
+          <>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/>
+            </svg>
+            Sync now
+          </>
+        )}
       </button>
-    </div>
+    </>
   );
 }

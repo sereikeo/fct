@@ -1,38 +1,422 @@
-import SyncStatus from './SyncStatus';
-import TimelineScrubber from './TimelineScrubber';
+import { useState, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { getCashflow, getEnvelopes, QUERY_KEYS, CashFlowEntry, LineItem, EnvelopeWithOverride } from '../services/api';
 import CashFlowChart from './CashFlowChart';
+import SyncStatus from './SyncStatus';
 import EnvelopePanel from './EnvelopePanel';
 import ReconciliationPanel from './ReconciliationPanel';
 
-interface DateRange {
-  from: string;
-  to: string;
-}
-
+interface DateRange { from: string; to: string }
 interface Props {
   dateRange: DateRange;
-  onDateRangeChange: (range: DateRange) => void;
+  onDateRangeChange: (r: DateRange) => void;
 }
 
-export default function Dashboard({ dateRange, onDateRangeChange }: Props) {
+function toISO(d: Date): string { return d.toISOString().slice(0, 10); }
+function addDays(d: Date, n: number): Date { const r = new Date(d); r.setDate(r.getDate() + n); return r; }
+function diffDays(from: string, to: string): number {
+  return Math.round((new Date(to).getTime() - new Date(from).getTime()) / 86_400_000);
+}
+const fmtAUD = (n: number) => (n < 0 ? '−A$' : 'A$') + Math.abs(Math.round(n)).toLocaleString('en-AU');
+const fmtMD = (d: Date) => d.toLocaleDateString('en-AU', { month: 'short', day: '2-digit' });
+
+type BucketFilter = 'all' | 'personal' | 'maple';
+
+// ——— CC Statement card ———
+function CCStatementCard({ entries }: { entries: CashFlowEntry[] }) {
+  const [open, setOpen] = useState(false);
+
+  const ccEntry = entries.find(e => e.breakdown.some(b => b.isCC && b.type === 'expense'));
+  const ccItems = ccEntry ? ccEntry.breakdown.filter(b => b.isCC && b.type === 'expense') : [];
+  const ccTotal = ccItems.reduce((t, b) => t + (b.overrideAmount ?? b.forecastAmount), 0);
+  const ccDate = ccEntry ? new Date(ccEntry.date + 'T00:00:00') : null;
+
   return (
-    <div className="max-w-[1440px] mx-auto px-7 py-6 space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Future Cash Timeline</h1>
-          <p className="text-gray-400 text-sm mt-0.5">Personal financial dashboard</p>
-        </div>
-        <SyncStatus />
+    <div className="stmt-card">
+      <div className="chip" />
+      <div className="tag">CBA Mastercard · next statement</div>
+      <div className="amt mono">{ccTotal > 0 ? fmtAUD(ccTotal) : 'A$0'}</div>
+      <div className="meta">
+        {ccDate
+          ? <><span>due <b>{fmtMD(ccDate)}</b></span></>
+          : <span style={{ color: 'var(--mute)' }}>No upcoming CC items</span>
+        }
       </div>
-
-      <TimelineScrubber dateRange={dateRange} onDateRangeChange={onDateRangeChange} />
-
-      <CashFlowChart from={dateRange.from} to={dateRange.to} />
-
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-        <EnvelopePanel />
-        <ReconciliationPanel />
+      {ccDate && <div className="period">period · statement cycle</div>}
+      {ccItems.length > 0 && (
+        <button className="stmt-toggle" onClick={() => setOpen(v => !v)}>
+          {open ? `▾ hide ${ccItems.length} items` : `▸ show ${ccItems.length} items`}
+        </button>
+      )}
+      <div className={`stmt-items${open ? ' open' : ''}`}>
+        {ccItems.map((item, i) => (
+          <div key={i} className="stmt-row">
+            <div className="d">{ccDate ? fmtMD(ccDate) : '—'}</div>
+            <div>{item.name}</div>
+            <div className="n">A${(item.overrideAmount ?? item.forecastAmount).toFixed(2)}</div>
+          </div>
+        ))}
+        {ccItems.length > 0 && (
+          <div className="stmt-row" style={{ borderTop: '1px solid rgba(91,59,138,0.2)', marginTop: 4, paddingTop: 8, fontWeight: 600 }}>
+            <div /><div>TOTAL</div>
+            <div className="n">A${ccTotal.toFixed(2)}</div>
+          </div>
+        )}
+      </div>
+      <div className="stmt-actions">
+        <button className="btn cc">Import statement</button>
+        <button className="btn ghost">Paste screenshot</button>
       </div>
     </div>
+  );
+}
+
+// ——— "On this date" sidebar card ———
+function OnThisDateCard({ entries, scrubIndex }: { entries: CashFlowEntry[]; scrubIndex: number }) {
+  const si = Math.max(0, Math.min(scrubIndex, entries.length - 1));
+  const entry = entries[si];
+  const incomeReceived = entries.slice(0, si + 1).reduce((t, e) => t + e.inflow, 0);
+  const billsPaid = entries.slice(0, si + 1).reduce((t, e) => t + e.outflow, 0);
+  const ccEntry = entries.find(e => e.breakdown.some(b => b.isCC && b.type === 'expense'));
+  const ccTotal = ccEntry
+    ? ccEntry.breakdown.filter(b => b.isCC && b.type === 'expense').reduce((t, b) => t + (b.overrideAmount ?? b.forecastAmount), 0)
+    : 0;
+  const date = entry ? fmtMD(new Date(entry.date + 'T00:00:00')) : '—';
+
+  return (
+    <div className="card">
+      <div className="hd"><h3>On this date</h3><span className="sub">{date}</span></div>
+      <div className="bd">
+        {entry ? (
+          <>
+            <div className="kv">
+              <span className="k">Projected balance</span>
+              <span className="v">{fmtAUD(entry.balance)}</span>
+            </div>
+            <div className="kv">
+              <span className="k">
+                <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', marginRight: 5, verticalAlign: 'middle', background: 'var(--personal)' }} />
+                Personal
+              </span>
+              <span className="v">{fmtAUD(entry.balP)}</span>
+            </div>
+            <div className="kv">
+              <span className="k">
+                <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', marginRight: 5, verticalAlign: 'middle', background: 'var(--maple)' }} />
+                Maple
+              </span>
+              <span className="v">{fmtAUD(entry.balM)}</span>
+            </div>
+            <div className="kv">
+              <span className="k">Income received</span>
+              <span className="v pos">+{fmtAUD(incomeReceived)}</span>
+            </div>
+            <div className="kv">
+              <span className="k">Bills paid</span>
+              <span className="v">−{fmtAUD(billsPaid)}</span>
+            </div>
+            <div className="kv">
+              <span className="k">Pending on CC</span>
+              <span className="v" style={{ color: 'var(--cc)' }}>{fmtAUD(ccTotal)}</span>
+            </div>
+          </>
+        ) : (
+          <div style={{ color: 'var(--mute)', fontSize: 12 }}>Waiting for data…</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ——— Alerts card ———
+function AlertsCard({ entries }: { entries: CashFlowEntry[] }) {
+  const LOW_THRESHOLD = 3500;
+  const lowPoint = entries.length > 0
+    ? entries.reduce((min, e) => Math.min(min, e.balance), entries[0].balance)
+    : null;
+  const lowEntry = entries.find(e => e.balance === lowPoint);
+
+  return (
+    <div className="card">
+      <div className="hd"><h3>Alerts</h3></div>
+      <div className="bd">
+        {lowPoint !== null && lowPoint < LOW_THRESHOLD ? (
+          <div className="alert warn">
+            <div className="ic">⚠</div>
+            <div>
+              <div className="t">
+                Balance dips to {fmtAUD(lowPoint)} on{' '}
+                {lowEntry ? fmtMD(new Date(lowEntry.date + 'T00:00:00')) : '—'}
+              </div>
+              <div className="s">below your {fmtAUD(LOW_THRESHOLD)} alert threshold.</div>
+            </div>
+          </div>
+        ) : (
+          <div className="alert" style={{ background: 'rgba(46,106,58,0.04)', borderColor: 'rgba(46,106,58,0.2)' }}>
+            <div className="ic" style={{ background: 'var(--green)', color: 'white' }}>✓</div>
+            <div>
+              <div className="t">Balance stays above {fmtAUD(LOW_THRESHOLD)}</div>
+              <div className="s">No low-balance alerts in this forecast window.</div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ——— Upcoming ledger table ———
+function LedgerCard({ entries, bucketFilter }: { entries: CashFlowEntry[]; bucketFilter: BucketFilter }) {
+  const rows = useMemo(() => {
+    const out: { entry: CashFlowEntry; item: LineItem }[] = [];
+    for (const entry of entries.slice(0, 91)) {
+      for (const item of entry.breakdown) {
+        if (bucketFilter !== 'all' && item.bucket !== bucketFilter) continue;
+        out.push({ entry, item });
+      }
+    }
+    return out;
+  }, [entries, bucketFilter]);
+
+  return (
+    <div className="card flush">
+      <div className="hd" style={{ padding: '16px 20px' }}>
+        <h3>Upcoming · next 90 days</h3>
+        <span className="sub">{rows.length} rows · expanded from recurrence</span>
+      </div>
+      <div style={{ overflow: 'auto', maxHeight: 560 }}>
+        <table className="ledger">
+          <thead>
+            <tr>
+              <th>Due</th><th>Bill</th><th>Budget</th><th>Payment</th>
+              <th className="num">Amount</th><th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(({ entry, item }, i) => {
+              const isIncome = item.type === 'income';
+              const isStmt = item.isCC;
+              const amt = item.overrideAmount ?? item.forecastAmount;
+              return (
+                <tr key={i} className={isStmt ? 'stmt-row-head' : ''}>
+                  <td>
+                    <div className="ic-cell">
+                      <div className={`icon ${isIncome ? 'in' : isStmt ? 'stmt' : 'out'}`}>
+                        {isStmt ? '◆' : isIncome ? '▲' : '▼'}
+                      </div>
+                      <div>
+                        <div className="bill-name">
+                          {new Date(entry.date + 'T00:00:00').toLocaleDateString('en-AU', { month: 'short', day: '2-digit' })}
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+                  <td>
+                    <div className="bill-name">{item.name}</div>
+                    {item.category && <div className="bill-sub">{item.category}</div>}
+                  </td>
+                  <td>
+                    {isStmt ? (
+                      <span className="tag cc">Credit</span>
+                    ) : (
+                      <span className={`tag ${item.bucket}`}>
+                        <span className="sw" style={{ background: item.bucket === 'maple' ? 'var(--maple)' : 'var(--personal)' }} />
+                        {item.bucket === 'maple' ? 'Maple' : 'Personal'}
+                      </span>
+                    )}
+                  </td>
+                  <td style={{ color: 'var(--mute)' }}>{item.payment}</td>
+                  <td className="num" style={{ color: isIncome ? 'var(--green)' : isStmt ? 'var(--cc)' : 'var(--ink)', fontWeight: 600 }}>
+                    {isIncome ? '+' : '−'}A${amt.toFixed(2)}
+                  </td>
+                  <td>
+                    <span className={`reco-pill${item.isReconciled ? ' ok' : ''}`}>
+                      {item.isReconciled ? 'reconciled' : isIncome ? 'scheduled' : 'pending'}
+                    </span>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ——— Notion preview card ———
+function NotionCard({ envelopes, bucketFilter }: { envelopes: EnvelopeWithOverride[]; bucketFilter: BucketFilter }) {
+  const typeEmoji: Record<string, string> = { income: '💰', expense: '💸', transfer: '↔' };
+  const rows = envelopes.filter(e =>
+    !e.deletedAt && (bucketFilter === 'all' || e.bucket === bucketFilter)
+  );
+
+  return (
+    <div className="card flush">
+      <div className="hd" style={{ padding: '16px 20px' }}>
+        <h3>From Notion · Expenses</h3>
+        <span className="sub">schema preview</span>
+      </div>
+      <div className="notion-hd">
+        <b>Budgets</b> · {rows.length} rows · Bill, Amount (AUD), Due, Recur, Payment, Tags
+      </div>
+      <div style={{ maxHeight: 520, overflow: 'auto' }}>
+        {rows.map((env) => (
+          <div key={env.id} className="notion-row">
+            <div className="name">
+              <span className="ico">{typeEmoji[env.type] ?? '📋'}</span>
+              {env.name}
+            </div>
+            <div
+              className="num"
+              style={{ color: env.type === 'income' ? 'var(--green)' : 'var(--ink)', fontWeight: 500 }}
+            >
+              {env.type === 'income' ? '+' : '−'}A${env.forecastAmount.toLocaleString()}
+            </div>
+            <div className="date">{env.dueDate}</div>
+            <div><span className="chip">{env.frequency}</span></div>
+            <div><span className="chip">{env.payment}</span></div>
+            <div className="chips">
+              <span className="chip mini">{env.bucket}</span>
+              {env.category && <span className="chip mini">{env.category}</span>}
+              {env.isVariable && <span className="chip mini">variable</span>}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ——— Dashboard ———
+export default function Dashboard({ dateRange, onDateRangeChange }: Props) {
+  const [bucketFilter, setBucketFilter] = useState<BucketFilter>('all');
+  const [scrubIndex, setScrubIndex] = useState(57);
+
+  const horizon = diffDays(dateRange.from, dateRange.to);
+
+  function handleHorizonChange(days: number) {
+    onDateRangeChange({ from: toISO(new Date()), to: toISO(addDays(new Date(), days)) });
+    setScrubIndex(v => Math.min(v, days));
+  }
+
+  const { data, isLoading } = useQuery({
+    queryKey: QUERY_KEYS.cashflow(dateRange.from, dateRange.to),
+    queryFn: () => getCashflow(dateRange.from, dateRange.to),
+  });
+
+  const { data: envData } = useQuery({
+    queryKey: QUERY_KEYS.envelopes,
+    queryFn: getEnvelopes,
+  });
+
+  const entries = useMemo<CashFlowEntry[]>(() => data?.entries ?? [], [data]);
+  const envelopes = useMemo<EnvelopeWithOverride[]>(() => envData?.envelopes ?? [], [envData]);
+
+  return (
+    <>
+      {/* ——— Top bar ——— */}
+      <header className="bar">
+        <div className="logo">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 17 L9 11 L13 15 L21 7"/>
+            <circle cx="9" cy="11" r="1.6" fill="currentColor"/>
+            <circle cx="13" cy="15" r="1.6" fill="currentColor"/>
+          </svg>
+        </div>
+        <div className="brand">
+          <b>Future Cash Timeline</b>
+          <small>connected to Notion · Budgets DB</small>
+        </div>
+        <div className="seg" role="group" aria-label="Budget bucket">
+          {(['all', 'personal', 'maple'] as BucketFilter[]).map((b) => (
+            <button
+              key={b}
+              aria-pressed={bucketFilter === b ? 'true' : 'false'}
+              onClick={() => setBucketFilter(b)}
+            >
+              <span
+                className="sw"
+                style={{ background: b === 'all' ? 'var(--ink)' : b === 'personal' ? 'var(--personal)' : 'var(--maple)' }}
+              />
+              {b === 'all' ? 'All' : b === 'personal' ? 'Personal' : 'Maple'}
+            </button>
+          ))}
+        </div>
+        <SyncStatus />
+        <div className="spacer" />
+        <button className="btn ghost">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/>
+          </svg>
+          Reconcile
+        </button>
+      </header>
+
+      {/* ——— Main page ——— */}
+      <main className="page">
+
+        {/* Hero */}
+        <section className="hero">
+          <div>
+            <h1>Your <em>cash</em> over time.</h1>
+            <p>
+              Drag the scrubber to project your balance on any future day.
+              Forecast from Notion recurrence · CC purchases bundle on statement due ·
+              variable spend reconciles when you commit actuals.
+            </p>
+          </div>
+          <div className="legend">
+            <span><i className="p" />Personal</span>
+            <span><i className="m" />Maple</span>
+            <span><i className="fc" />forecast</span>
+            <span><i className="today" />today</span>
+            <span>▲ income · ▼ bill</span>
+            <span><i className="cc" />◆ CC stmt</span>
+          </div>
+        </section>
+
+        {/* Chart + sidebar grid */}
+        <section className="grid">
+          {isLoading ? (
+            <div className="card curve-card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 460, color: 'var(--mute)', fontSize: 13 }}>
+              Loading cashflow data…
+            </div>
+          ) : (
+            <CashFlowChart
+              entries={entries}
+              scrubIndex={scrubIndex}
+              onScrubChange={setScrubIndex}
+              horizon={horizon}
+              onHorizonChange={handleHorizonChange}
+              bucketFilter={bucketFilter}
+            />
+          )}
+
+          <div className="stack">
+            <OnThisDateCard entries={entries} scrubIndex={scrubIndex} />
+            <CCStatementCard entries={entries} />
+            <AlertsCard entries={entries} />
+          </div>
+        </section>
+
+        <div style={{ height: 22 }} />
+
+        {/* Row 2: Variable spend | Reconcile drop zone */}
+        <section className="row2">
+          <EnvelopePanel />
+          <ReconciliationPanel />
+        </section>
+
+        <div style={{ height: 22 }} />
+
+        {/* Row 2: Ledger | Notion preview */}
+        <section className="row2">
+          <LedgerCard entries={entries} bucketFilter={bucketFilter} />
+          <NotionCard envelopes={envelopes} bucketFilter={bucketFilter} />
+        </section>
+
+      </main>
+    </>
   );
 }

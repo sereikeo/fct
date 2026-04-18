@@ -9,14 +9,8 @@ import {
   ReconciliationRecord,
 } from '../services/api';
 
-const fmt = (n: number) =>
-  new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(n);
-
-function deltaColor(delta: number) {
-  if (delta < 0) return 'text-green-400';
-  if (delta > 0) return 'text-red-400';
-  return 'text-gray-400';
-}
+const fmtAUDc = (n: number) =>
+  (n < 0 ? '−A$' : 'A$') + Math.abs(n).toFixed(2);
 
 interface AddFormProps {
   envelopeMap: Record<string, string>;
@@ -34,91 +28,56 @@ function AddForm({ envelopeMap, onClose }: AddFormProps) {
   const add = useMutation({
     mutationFn: () =>
       postReconciliation({
-        budgetItemId,
-        date,
+        budgetItemId, date,
         forecastAmount: parseFloat(forecastAmount),
         actualAmount: parseFloat(actualAmount),
         note: note || undefined,
       }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: QUERY_KEYS.reconciliation });
-      onClose();
-    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: QUERY_KEYS.reconciliation }); onClose(); },
   });
 
   const valid = budgetItemId && date && forecastAmount && actualAmount;
+  const inputStyle: React.CSSProperties = {
+    width: '100%', background: 'var(--paper)', border: '1px solid var(--line)',
+    borderRadius: 8, padding: '5px 9px', fontSize: 12.5, color: 'var(--ink)',
+    fontFamily: 'Inter, sans-serif', outline: 'none',
+  };
 
   return (
-    <div className="border-t border-gray-700 p-4 space-y-3">
-      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Add reconciliation</p>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div className="sm:col-span-2">
-          <label className="block text-xs text-gray-400 mb-1">Budget item</label>
-          <select
-            value={budgetItemId}
-            onChange={(e) => setBudgetItemId(e.target.value)}
-            className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          >
+    <div style={{ padding: '14px 20px', background: 'var(--paper-2)', borderBottom: '1px solid var(--line-2)' }}>
+      <div style={{ fontSize: 10.5, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-2)', marginBottom: 10 }}>
+        Add reconciliation
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
+        <div style={{ gridColumn: '1 / -1' }}>
+          <div style={{ fontSize: 11, color: 'var(--mute)', marginBottom: 4 }}>Budget item</div>
+          <select value={budgetItemId} onChange={(e) => setBudgetItemId(e.target.value)} style={inputStyle}>
             <option value="">Select…</option>
-            {Object.entries(envelopeMap).map(([id, name]) => (
-              <option key={id} value={id}>{name}</option>
-            ))}
+            {Object.entries(envelopeMap).map(([id, name]) => <option key={id} value={id}>{name}</option>)}
           </select>
         </div>
         <div>
-          <label className="block text-xs text-gray-400 mb-1">Date</label>
-          <input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          />
+          <div style={{ fontSize: 11, color: 'var(--mute)', marginBottom: 4 }}>Date</div>
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={inputStyle} />
         </div>
         <div>
-          <label className="block text-xs text-gray-400 mb-1">Forecast amount</label>
-          <input
-            type="number"
-            value={forecastAmount}
-            onChange={(e) => setForecastAmount(e.target.value)}
-            placeholder="0.00"
-            className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          />
+          <div style={{ fontSize: 11, color: 'var(--mute)', marginBottom: 4 }}>Note (optional)</div>
+          <input type="text" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional note" style={inputStyle} />
         </div>
         <div>
-          <label className="block text-xs text-gray-400 mb-1">Actual amount</label>
-          <input
-            type="number"
-            value={actualAmount}
-            onChange={(e) => setActualAmount(e.target.value)}
-            placeholder="0.00"
-            className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          />
+          <div style={{ fontSize: 11, color: 'var(--mute)', marginBottom: 4 }}>Forecast</div>
+          <input type="number" value={forecastAmount} onChange={(e) => setForecastAmount(e.target.value)} placeholder="0.00" style={inputStyle} />
         </div>
         <div>
-          <label className="block text-xs text-gray-400 mb-1">Note (optional)</label>
-          <input
-            type="text"
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder="Optional note"
-            className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          />
+          <div style={{ fontSize: 11, color: 'var(--mute)', marginBottom: 4 }}>Actual</div>
+          <input type="number" value={actualAmount} onChange={(e) => setActualAmount(e.target.value)} placeholder="0.00" style={inputStyle} />
         </div>
       </div>
-      <div className="flex gap-2">
-        <button
-          onClick={() => add.mutate()}
-          disabled={!valid || add.isPending}
-          className="px-4 py-1.5 text-sm bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-lg text-white transition-colors"
-        >
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button className="btn" onClick={() => add.mutate()} disabled={!valid || add.isPending} style={{ fontSize: 12, padding: '6px 14px' }}>
           {add.isPending ? 'Saving…' : 'Save'}
         </button>
-        <button
-          onClick={onClose}
-          className="px-4 py-1.5 text-sm bg-gray-700 hover:bg-gray-600 rounded-lg text-gray-300 transition-colors"
-        >
-          Cancel
-        </button>
+        <button className="btn ghost" onClick={onClose} style={{ fontSize: 12, padding: '6px 14px' }}>Cancel</button>
       </div>
     </div>
   );
@@ -128,15 +87,8 @@ export default function ReconciliationPanel() {
   const qc = useQueryClient();
   const [showForm, setShowForm] = useState(false);
 
-  const { data, isLoading, isError } = useQuery({
-    queryKey: QUERY_KEYS.reconciliation,
-    queryFn: getReconciliation,
-  });
-
-  const { data: envData } = useQuery({
-    queryKey: QUERY_KEYS.envelopes,
-    queryFn: getEnvelopes,
-  });
+  const { data, isLoading } = useQuery({ queryKey: QUERY_KEYS.reconciliation, queryFn: getReconciliation });
+  const { data: envData } = useQuery({ queryKey: QUERY_KEYS.envelopes, queryFn: getEnvelopes });
 
   const remove = useMutation({
     mutationFn: (id: string) => deleteReconciliation(id),
@@ -144,84 +96,70 @@ export default function ReconciliationPanel() {
   });
 
   const envelopeMap: Record<string, string> = {};
-  if (envData) {
-    for (const e of envData.envelopes) {
-      envelopeMap[e.id] = e.name;
-    }
-  }
+  if (envData) for (const e of envData.envelopes) envelopeMap[e.id] = e.name;
 
-  if (isLoading) {
-    return (
-      <div className="bg-gray-800 rounded-xl p-6 text-gray-500 text-sm">Loading reconciliations…</div>
-    );
-  }
-
-  if (isError || !data) {
-    return (
-      <div className="bg-gray-800 rounded-xl p-6 text-red-400 text-sm">Failed to load reconciliations.</div>
-    );
-  }
-
-  const records: ReconciliationRecord[] = data.records;
+  const records: ReconciliationRecord[] = data?.records ?? [];
 
   return (
-    <div className="bg-gray-800 rounded-xl overflow-hidden">
-      <div className="px-4 py-3 border-b border-gray-700 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-white">Reconciliations</h2>
-        <button
-          onClick={() => setShowForm((v) => !v)}
-          className="text-xs bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg px-3 py-1 transition-colors"
-        >
-          + Add
-        </button>
+    <div className="card">
+      <div className="hd">
+        <h3>Reconcile variable spend</h3>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <span className="sub">paste · drop · upload</span>
+          <button
+            className="btn ghost"
+            onClick={() => setShowForm(v => !v)}
+            style={{ fontSize: 11, padding: '3px 10px' }}
+          >
+            + Add
+          </button>
+        </div>
       </div>
 
       {showForm && <AddForm envelopeMap={envelopeMap} onClose={() => setShowForm(false)} />}
 
-      <div className="overflow-x-auto">
-        {records.length === 0 ? (
-          <p className="px-4 py-6 text-center text-gray-500 text-sm">No reconciliations yet.</p>
-        ) : (
-          <table className="w-full text-left">
-            <thead>
-              <tr className="text-xs text-gray-500 uppercase tracking-wide">
-                <th className="px-3 py-2">Date</th>
-                <th className="px-3 py-2">Item</th>
-                <th className="px-3 py-2 text-right">Forecast</th>
-                <th className="px-3 py-2 text-right">Actual</th>
-                <th className="px-3 py-2 text-right">Delta</th>
-                <th className="px-3 py-2" />
-              </tr>
-            </thead>
-            <tbody>
-              {records.map((r) => (
-                <tr key={r.id} className="border-t border-gray-700 hover:bg-gray-700/40 transition-colors">
-                  <td className="px-3 py-2 text-xs font-mono text-gray-400">{r.date}</td>
-                  <td className="px-3 py-2 text-sm text-white">
-                    {envelopeMap[r.budgetItemId] ?? r.budgetItemId}
-                  </td>
-                  <td className="px-3 py-2 text-right font-mono text-sm text-gray-300">
-                    {fmt(r.forecastAmount)}
-                  </td>
-                  <td className="px-3 py-2 text-right font-mono text-sm text-white">
-                    {fmt(r.actualAmount)}
-                  </td>
-                  <td className={`px-3 py-2 text-right font-mono text-sm ${deltaColor(r.delta)}`}>
-                    {r.delta > 0 ? '+' : ''}{fmt(r.delta)}
-                  </td>
-                  <td className="px-3 py-2 text-center">
-                    <button
-                      onClick={() => remove.mutate(r.id)}
-                      className="text-xs text-red-400 hover:text-red-300"
-                      title="Delete"
-                    >
-                      ×
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <div className="bd">
+        <div className="drop" tabIndex={0}>
+          <div className="dic">⎘</div>
+          <div className="dt">Drop a screenshot, CSV, or PDF</div>
+          <div className="ds">Parse rows, match to forecast bills, flag new variable-spend items for a category.</div>
+          <div className="dh">supports PNG · JPG · PDF · CSV · Cmd+V to paste</div>
+        </div>
+
+        {records.length > 0 && (
+          <>
+            <div style={{ fontSize: 11, color: 'var(--mute)', letterSpacing: '0.1em', textTransform: 'uppercase', textAlign: 'center', margin: '18px 0 10px' }}>
+              last reconciled
+            </div>
+            {isLoading && <div className="kv"><span className="k">Loading…</span></div>}
+            {records.slice(0, 5).map((r) => (
+              <div key={r.id} className="kv">
+                <span className="k">
+                  {r.date} · {envelopeMap[r.budgetItemId] ?? 'Unknown'}
+                  {r.note ? ` · ${r.note}` : ''}
+                </span>
+                <span
+                  className={`v ${r.delta < 0 ? 'pos' : r.delta > 0 ? 'neg' : ''}`}
+                  style={{ display: 'flex', alignItems: 'center', gap: 8 }}
+                >
+                  {fmtAUDc(r.actualAmount)}
+                  <button
+                    onClick={() => remove.mutate(r.id)}
+                    style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 14, padding: 0, lineHeight: 1 }}
+                    title="Delete"
+                  >
+                    ×
+                  </button>
+                </span>
+              </div>
+            ))}
+          </>
+        )}
+
+        {!isLoading && records.length === 0 && (
+          <p style={{ color: 'var(--mute)', fontSize: 12, textAlign: 'center', margin: '18px 0 0' }}>
+            No reconciliations yet. Drop a file or click + Add.
+          </p>
         )}
       </div>
     </div>

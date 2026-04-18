@@ -1,56 +1,42 @@
-interface DateRange {
-  from: string;
-  to: string;
-}
-
 interface Props {
-  dateRange: DateRange;
-  onDateRangeChange: (range: DateRange) => void;
+  value: number;
+  max: number;
+  onChange: (v: number) => void;
+  horizon: number;
+  onHorizonChange: (h: number) => void;
 }
 
-export default function TimelineScrubber({ dateRange, onDateRangeChange }: Props) {
+const HORIZONS: { label: string; days: number }[] = [
+  { label: '1M', days: 30 },
+  { label: '3M', days: 90 },
+  { label: '6M', days: 180 },
+  { label: '1Y', days: 365 },
+];
+
+export default function TimelineScrubber({ value, max, onChange, horizon, onHorizonChange }: Props) {
   return (
-    <div className="bg-gray-800 rounded-xl p-4 flex flex-wrap items-center gap-4">
-      <span className="text-gray-400 text-sm font-medium">Date range</span>
-      <div className="flex items-center gap-2">
-        <label className="text-gray-400 text-xs">From</label>
+    <div className="controls">
+      <div className="range">
+        <span className="pip">SCRUB</span>
         <input
-          type="date"
-          value={dateRange.from}
-          onChange={(e) => onDateRangeChange({ ...dateRange, from: e.target.value })}
-          className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          type="range"
+          min={0}
+          max={max}
+          value={value}
+          onChange={(e) => onChange(Number(e.target.value))}
         />
+        <span className="pip">+{value}d</span>
       </div>
-      <div className="flex items-center gap-2">
-        <label className="text-gray-400 text-xs">To</label>
-        <input
-          type="date"
-          value={dateRange.to}
-          onChange={(e) => onDateRangeChange({ ...dateRange, to: e.target.value })}
-          className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-        />
-      </div>
-      <div className="flex gap-2 ml-auto">
-        {(['1M', '3M', '6M', '1Y'] as const).map((label) => {
-          const days = label === '1M' ? 30 : label === '3M' ? 90 : label === '6M' ? 180 : 365;
-          return (
-            <button
-              key={label}
-              onClick={() => {
-                const from = new Date();
-                const to = new Date();
-                to.setDate(to.getDate() + days);
-                onDateRangeChange({
-                  from: from.toISOString().slice(0, 10),
-                  to: to.toISOString().slice(0, 10),
-                });
-              }}
-              className="px-3 py-1 text-xs rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-300 transition-colors"
-            >
-              {label}
-            </button>
-          );
-        })}
+      <div className="seg" role="group">
+        {HORIZONS.map(({ label, days }) => (
+          <button
+            key={label}
+            aria-pressed={horizon === days ? 'true' : 'false'}
+            onClick={() => onHorizonChange(days)}
+          >
+            {label}
+          </button>
+        ))}
       </div>
     </div>
   );

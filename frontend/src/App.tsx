@@ -10,21 +10,22 @@ function toISO(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
+function addDays(d: Date, n: number): Date {
+  const r = new Date(d);
+  r.setDate(r.getDate() + n);
+  return r;
+}
+
 export default function App() {
   const today = new Date();
-  const plus90 = new Date(today);
-  plus90.setDate(plus90.getDate() + 90);
-
   const [dateRange, setDateRange] = useState({
     from: toISO(today),
-    to: toISO(plus90),
+    to: toISO(addDays(today, 90)),
   });
 
   return (
     <QueryClientProvider client={queryClient}>
-      <div className="min-h-screen bg-gray-900 text-white">
-        <Dashboard dateRange={dateRange} onDateRangeChange={setDateRange} />
-      </div>
+      <Dashboard dateRange={dateRange} onDateRangeChange={setDateRange} />
     </QueryClientProvider>
   );
 }

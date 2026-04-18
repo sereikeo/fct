@@ -2,25 +2,26 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getEnvelopes, patchEnvelope, deleteEnvelope, QUERY_KEYS, EnvelopeWithOverride } from '../services/api';
 
-const fmt = (n: number) =>
-  new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(n);
+const fmtAUD = (n: number) =>
+  (n < 0 ? '−A$' : 'A$') + Math.abs(Math.round(n)).toLocaleString('en-AU');
 
 function currentPeriod(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
-interface OverrideRowProps {
-  envelope: EnvelopeWithOverride;
-}
-
-function OverrideRow({ envelope }: OverrideRowProps) {
+function VariableRow({ envelope }: { envelope: EnvelopeWithOverride }) {
   const qc = useQueryClient();
   const period = currentPeriod();
-  const existing = envelope.overrides.find((o) => o.period === period);
+  const override = envelope.overrides.find((o) => o.period === period);
+  const budget = envelope.forecastAmount;
+  const actual = override?.overrideAmount ?? 0;
+  const pct = budget > 0 ? Math.min(100, (actual / budget) * 100) : 0;
+  const over = actual > budget;
+  const fillCls = over ? 'fill over' : pct < 60 ? 'fill good' : 'fill';
 
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(String(existing?.overrideAmount ?? envelope.forecastAmount));
+  const [draft, setDraft] = useState(String(override?.overrideAmount ?? ''));
 
   const save = useMutation({
     mutationFn: () =>
@@ -34,57 +35,68 @@ function OverrideRow({ envelope }: OverrideRowProps) {
   });
 
   return (
-    <tr className="border-t border-gray-700 hover:bg-gray-700/40 transition-colors">
-      <td className="px-3 py-2 text-sm text-white">{envelope.name}</td>
-      <td className="px-3 py-2 text-xs text-gray-400 capitalize">{envelope.bucket}</td>
-      <td className="px-3 py-2 text-xs text-gray-400">{envelope.frequency}</td>
-      <td className="px-3 py-2 text-right font-mono text-sm text-gray-300">
-        {fmt(envelope.forecastAmount)}
-      </td>
-      <td className="px-3 py-2 text-right font-mono text-sm">
-        {envelope.isVariable ? (
-          editing ? (
-            <input
-              autoFocus
-              type="number"
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onBlur={() => {
-                setEditing(false);
-                if (draft && parseFloat(draft) !== envelope.forecastAmount) {
-                  save.mutate();
-                }
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') e.currentTarget.blur();
-                if (e.key === 'Escape') { setDraft(String(existing?.overrideAmount ?? envelope.forecastAmount)); setEditing(false); }
-              }}
-              className="w-28 bg-gray-700 border border-indigo-500 rounded px-2 py-0.5 text-white text-right text-sm focus:outline-none"
-            />
-          ) : (
-            <button
-              onClick={() => setEditing(true)}
-              className={`hover:underline ${existing ? 'text-indigo-400' : 'text-gray-400'}`}
-            >
-              {existing ? fmt(existing.overrideAmount) : '—'}
-            </button>
-          )
+    <div className="var-row">
+      <div className="cat">
+        {envelope.name}
+        <div className="sub">{envelope.category ?? envelope.payment}</div>
+      </div>
+      <div style={{ position: 'relative' }}>
+        <div className="bbar" style={{ overflow: 'visible' }}>
+          <div style={{ overflow: 'hidden', height: '100%', borderRadius: 7, position: 'relative' }}>
+            <div className={fillCls} style={{ width: `${pct}%` }} />
+          </div>
+          <div
+            className="marker"
+            style={{ position: 'absolute', top: -2, bottom: -2, left: '100%', width: 2, background: 'var(--ink)', opacity: 0.35 }}
+          />
+        </div>
+      </div>
+      <div className="nums">
+        {editing ? (
+          <input
+            autoFocus
+            type="number"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={() => {
+              setEditing(false);
+              if (draft && parseFloat(draft) >= 0) save.mutate();
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') e.currentTarget.blur();
+              if (e.key === 'Escape') { setDraft(''); setEditing(false); }
+            }}
+            style={{
+              width: '100%', textAlign: 'right', background: 'var(--paper)',
+              border: '1px solid var(--ink)', borderRadius: 6, padding: '2px 6px',
+              fontFamily: 'JetBrains Mono, monospace', fontSize: 12.5, color: 'var(--ink)',
+            }}
+          />
         ) : (
-          <span className="text-gray-500">—</span>
-        )}
-      </td>
-      <td className="px-3 py-2 text-center">
-        {existing && (
-          <button
-            onClick={() => remove.mutate()}
-            className="text-xs text-red-400 hover:text-red-300"
-            title="Remove override"
+          <div
+            className={`v ${over ? 'over' : pct < 60 ? 'good' : 'ok'}`}
+            style={{ cursor: 'pointer' }}
+            title="Click to set actual spend"
+            onClick={() => { setDraft(String(override?.overrideAmount ?? '')); setEditing(true); }}
           >
-            ×
-          </button>
+            {actual > 0
+              ? (over ? `+${fmtAUD(actual - budget)} over` : `${fmtAUD(budget - actual)} left`)
+              : 'set actual'}
+          </div>
         )}
-      </td>
-    </tr>
+        <div className="s">
+          {actual > 0 ? `${fmtAUD(actual)} of ${fmtAUD(budget)}` : `budget ${fmtAUD(budget)}`}
+          {override && (
+            <button
+              onClick={() => remove.mutate()}
+              style={{ marginLeft: 6, background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 11, padding: 0 }}
+            >
+              ×
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -96,42 +108,37 @@ export default function EnvelopePanel() {
 
   if (isLoading) {
     return (
-      <div className="bg-gray-800 rounded-xl p-6 text-gray-500 text-sm">Loading envelopes…</div>
+      <div className="card">
+        <div className="hd"><h3>Variable spend · this month</h3></div>
+        <div className="bd" style={{ color: 'var(--mute)', fontSize: 12 }}>Loading…</div>
+      </div>
     );
   }
 
   if (isError || !data) {
     return (
-      <div className="bg-gray-800 rounded-xl p-6 text-red-400 text-sm">Failed to load envelopes.</div>
+      <div className="card">
+        <div className="bd" style={{ color: 'var(--accent)' }}>Failed to load envelopes.</div>
+      </div>
     );
   }
 
-  const envelopes = data.envelopes.filter((e) => !e.deletedAt);
+  const variableEnvelopes = data.envelopes.filter((e) => !e.deletedAt && e.isVariable);
 
   return (
-    <div className="bg-gray-800 rounded-xl overflow-hidden">
-      <div className="px-4 py-3 border-b border-gray-700 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-white">Budget Envelopes</h2>
-        <span className="text-xs text-gray-400">{envelopes.length} items</span>
+    <div className="card">
+      <div className="hd">
+        <h3>Variable spend · this month</h3>
+        <span className="sub">budget vs actual-to-date</span>
       </div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-left">
-          <thead>
-            <tr className="text-xs text-gray-500 uppercase tracking-wide">
-              <th className="px-3 py-2">Name</th>
-              <th className="px-3 py-2">Bucket</th>
-              <th className="px-3 py-2">Freq</th>
-              <th className="px-3 py-2 text-right">Forecast</th>
-              <th className="px-3 py-2 text-right">Override</th>
-              <th className="px-3 py-2" />
-            </tr>
-          </thead>
-          <tbody>
-            {envelopes.map((env) => (
-              <OverrideRow key={env.id} envelope={env} />
-            ))}
-          </tbody>
-        </table>
+      <div className="bd">
+        {variableEnvelopes.length === 0 ? (
+          <p style={{ color: 'var(--mute)', fontSize: 12, margin: 0 }}>
+            No variable envelopes. Mark items as variable in Notion to track actual spend here.
+          </p>
+        ) : (
+          variableEnvelopes.map((env) => <VariableRow key={env.id} envelope={env} />)
+        )}
       </div>
     </div>
   );
