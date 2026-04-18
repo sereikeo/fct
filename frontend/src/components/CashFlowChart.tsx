@@ -281,6 +281,18 @@ export default function CashFlowChart({
             {ccDate ? `due ${fmtMD(ccDate)} · ${ccCount} items` : 'no CC items found'}
           </div>
         </div>
+
+        <div className="seg" role="group" style={{ marginLeft: 'auto', alignSelf: 'center' }}>
+          {([{ label: '1M', days: 30 }, { label: '3M', days: 90 }, { label: '6M', days: 180 }, { label: '1Y', days: 365 }]).map(({ label, days }) => (
+            <button
+              key={label}
+              aria-pressed={horizon === days ? 'true' : 'false'}
+              onClick={() => onHorizonChange(days)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="svg-wrap">
@@ -311,8 +323,6 @@ export default function CashFlowChart({
         value={si}
         max={Math.max(0, series.length - 1)}
         onChange={onScrubChange}
-        horizon={horizon}
-        onHorizonChange={onHorizonChange}
       />
     </div>
   );
