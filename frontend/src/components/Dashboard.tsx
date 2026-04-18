@@ -291,14 +291,9 @@ function NotionCard({ envelopes, bucketFilter }: { envelopes: EnvelopeWithOverri
 // ——— Dashboard ———
 export default function Dashboard({ dateRange, onDateRangeChange }: Props) {
   const [bucketFilter, setBucketFilter] = useState<BucketFilter>('all');
-  const [scrubIndex, setScrubIndex] = useState(57);
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
   const horizon = diffDays(dateRange.from, dateRange.to);
-
-  function handleHorizonChange(days: number) {
-    onDateRangeChange({ from: toISO(new Date()), to: toISO(addDays(new Date(), days)) });
-    setScrubIndex(v => Math.min(v, days));
-  }
 
   const { data, isLoading } = useQuery({
     queryKey: QUERY_KEYS.cashflow(dateRange.from, dateRange.to),
@@ -312,6 +307,21 @@ export default function Dashboard({ dateRange, onDateRangeChange }: Props) {
 
   const entries = useMemo<CashFlowEntry[]>(() => data?.entries ?? [], [data]);
   const envelopes = useMemo<EnvelopeWithOverride[]>(() => envData?.envelopes ?? [], [envData]);
+
+  const scrubIndex = useMemo(() => {
+    if (!selectedDate || entries.length === 0) return 0;
+    const idx = entries.findIndex(e => e.date === selectedDate);
+    return idx >= 0 ? idx : Math.min(57, entries.length - 1);
+  }, [entries, selectedDate]);
+
+  function handleScrubChange(i: number) {
+    const d = entries[i]?.date;
+    if (d) setSelectedDate(d);
+  }
+
+  function handleHorizonChange(days: number) {
+    onDateRangeChange({ from: toISO(new Date()), to: toISO(addDays(new Date(), days)) });
+  }
 
   return (
     <>
@@ -386,7 +396,7 @@ export default function Dashboard({ dateRange, onDateRangeChange }: Props) {
             <CashFlowChart
               entries={entries}
               scrubIndex={scrubIndex}
-              onScrubChange={setScrubIndex}
+              onScrubChange={handleScrubChange}
               horizon={horizon}
               onHorizonChange={handleHorizonChange}
               bucketFilter={bucketFilter}
