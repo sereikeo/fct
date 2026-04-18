@@ -1,31 +1,53 @@
-version: '3.8'
-
 services:
-  backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
     ports:
-      - "${PORT:-3000}:3000"
-    env_file:
-      - .env
+      - "80:80"
+      - "443:443"
     volumes:
-      - ./backend:/app
-    depends_on:
-      - frontend
-
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    ports:
-      - "${FRONTEND_PORT:-80}:80"
-    env_file:
-      - .env
-    volumes:
-      - ./frontend:/app
+      - ./proxy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+      - frontend_dist:/srv:ro
     depends_on:
       - backend
+
+  frontend:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-local}/fct-frontend:latest
+    build:
+      context: ./frontend
+    volumes:
+      - frontend_dist:/app/dist
+
+  backend:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-local}/fct-backend:latest
+    build:
+      context: ./backend
+    restart: unless-stopped
+    expose:
+      - "3001"
+    env_file:
+      - .env
+    volumes:
+      - ${SQLITE_DIR:-./data}:/app/data
+
+  runner:
+    image: myoung34/github-runner:latest
+    restart: unless-stopped
+    environment:
+      REPO_URL: ${GITHUB_REPO_URL:-}
+      RUNNER_TOKEN: ${RUNNER_TOKEN:-}
+      RUNNER_NAME: fct-runner
+      RUNNER_WORKDIR: /tmp/runner
+      RUNNER_SCOPE: repo
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+volumes:
+  caddy_data:
+  caddy_config:
+  frontend_dist:
 
 networks:
   default:

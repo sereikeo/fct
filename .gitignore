@@ -4,9 +4,7 @@ yarn-debug.log*
 yarn-error.log*
 .env
 .env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env.*.local
 
 # IDE
 .vscode/
@@ -24,5 +22,8 @@ dist/
 build/
 *.log
 
-# Docker volumes
+# SQLite
+*.db
+
+# Docker
 docker-compose.override.yml

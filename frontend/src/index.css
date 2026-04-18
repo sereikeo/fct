@@ -1,0 +1,21 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --paper: #f3efe6;
+  --paper-2: #ebe5d6;
+  --paper-3: #e2dac6;
+  --ink: #131211;
+  --ink-2: #3a342b;
+  --mute: #8a8275;
+  --line: rgba(19, 18, 17, 0.16);
+  --line-2: rgba(19, 18, 17, 0.08);
+  --accent: #c7442b;
+  --green: #2e6a3a;
+  --cc: #5b3b8a;
+  --maple: #6b3fa0;
+  --personal: #1f4f7a;
+  --shadow: 0 1px 0 rgba(19, 18, 17, 0.04), 0 12px 30px -18px rgba(19, 18, 17, 0.25);
+  --radius: 14px;
+}
