@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS budget_items (
   category        TEXT,
   type            TEXT NOT NULL CHECK (type IN ('income', 'expense', 'transfer')),
   frequency       TEXT NOT NULL CHECK (frequency IN ('once', 'weekly', 'fortnightly', 'monthly', 'annual')),
-  due_date        TEXT NOT NULL,
+  due_date        TEXT NULL,
   is_variable     INTEGER NOT NULL DEFAULT 0,
   bucket          TEXT NOT NULL CHECK (bucket IN ('personal', 'maple')),
   payment         TEXT NOT NULL,
