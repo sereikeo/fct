@@ -3,6 +3,8 @@
         reverse_proxy fct_backend:3001
     }
     handle {
-        reverse_proxy fct_frontend:80
+        root * /srv
+        try_files {path} /index.html
+        file_server
     }
 }
