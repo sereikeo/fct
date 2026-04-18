@@ -1,0 +1,1197 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>FCT · Future Cash Timeline</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#f3efe6;
+    --paper-2:#ebe5d6;
+    --paper-3:#e2dac6;
+    --ink:#131211;
+    --ink-2:#3a342b;
+    --mute:#8a8275;
+    --line:rgba(19,18,17,0.16);
+    --line-2:rgba(19,18,17,0.08);
+    --accent:#c7442b;       /* today / alert rust */
+    --green:#2e6a3a;        /* income / under budget */
+    --cc:#5b3b8a;           /* credit card purple */
+    --maple:#6b3fa0;        /* Maple household — purple */
+    --personal:#1f4f7a;     /* Personal — blue */
+    --shadow: 0 1px 0 rgba(19,18,17,0.04), 0 12px 30px -18px rgba(19,18,17,0.25);
+    --radius: 14px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--paper);color:var(--ink);font-family:'Inter',system-ui,sans-serif;font-size:13.5px;line-height:1.5;-webkit-font-smoothing:antialiased}
+  body{
+    background-image:
+      radial-gradient(1200px 500px at 80% -200px, rgba(199,68,43,0.04), transparent 60%),
+      radial-gradient(900px 600px at -100px 20%, rgba(91,59,138,0.04), transparent 60%);
+    min-height:100vh;
+  }
+  .mono{font-family:'JetBrains Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums}
+  .serif{font-family:'Instrument Serif',serif;font-weight:400;letter-spacing:-0.01em}
+  h1,h2,h3{margin:0}
+  button{font-family:inherit}
+
+  /* Top bar */
+  .bar{
+    display:flex;align-items:center;gap:14px;padding:14px 28px;
+    background:rgba(243,239,230,0.82);backdrop-filter:blur(14px);
+    border-bottom:1px solid var(--line);position:sticky;top:0;z-index:30
+  }
+  .logo{width:30px;height:30px;border-radius:9px;background:var(--ink);color:var(--paper);display:grid;place-items:center;position:relative;overflow:hidden}
+  .logo svg{width:18px;height:18px}
+  .brand{display:flex;flex-direction:column;line-height:1.15}
+  .brand b{font-weight:700;letter-spacing:-0.01em;font-size:14px}
+  .brand small{color:var(--mute);font-size:11px}
+  .seg{display:flex;background:var(--paper-2);border:1px solid var(--line);border-radius:10px;padding:3px;gap:2px}
+  .seg button{background:transparent;border:0;padding:6px 12px;border-radius:7px;color:var(--ink-2);font-size:12.5px;font-weight:500;cursor:pointer;display:flex;align-items:center;gap:7px}
+  .seg button[aria-pressed="true"]{background:var(--paper);box-shadow:var(--shadow);color:var(--ink)}
+  .seg .sw{width:7px;height:7px;border-radius:50%}
+  .sync{display:flex;align-items:center;gap:8px;color:var(--mute);font-size:12px;padding:6px 12px;border:1px solid var(--line);border-radius:999px;background:var(--paper)}
+  .sync .dot{width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 0 3px rgba(46,106,58,0.15)}
+  .bar .spacer{flex:1}
+  .btn{background:var(--ink);color:var(--paper);border:1px solid var(--ink);border-radius:10px;padding:8px 14px;font-size:13px;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;gap:8px;box-shadow:var(--shadow)}
+  .btn:hover{background:#1d1b19}
+  .btn.ghost{background:transparent;color:var(--ink);border-color:var(--line);box-shadow:none}
+  .btn.ghost:hover{background:var(--paper-2)}
+  .btn.cc{background:var(--cc);border-color:var(--cc)}
+  .btn.cc:hover{background:#4a2f73}
+
+  /* Layout */
+  .page{max-width:1440px;margin:0 auto;padding:28px 28px 80px}
+  .hero{display:grid;grid-template-columns:1fr auto;align-items:end;gap:24px;margin-bottom:22px}
+  .hero h1{font-family:'Instrument Serif',serif;font-size:56px;line-height:1;letter-spacing:-0.02em;font-weight:400}
+  .hero h1 em{font-style:italic;color:var(--accent)}
+  .hero p{margin:10px 0 0;color:var(--mute);max-width:560px;font-size:14px}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;font-size:11.5px;color:var(--mute);align-items:center}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .legend i{width:22px;height:2.5px;background:var(--ink);display:inline-block;border-radius:2px}
+  .legend i.fc{background:repeating-linear-gradient(90deg,var(--ink) 0 5px,transparent 5px 9px)}
+  .legend i.cc{background:var(--cc)}
+  .legend i.today{background:repeating-linear-gradient(90deg,var(--accent) 0 4px,transparent 4px 7px)}
+  .legend i.p{background:var(--personal)}
+  .legend i.m{background:var(--maple)}
+
+  /* Grid */
+  .grid{display:grid;grid-template-columns:1fr 380px;gap:22px}
+  .stack{display:grid;gap:22px}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+
+  .card{
+    background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);
+    box-shadow:var(--shadow);overflow:hidden;position:relative
+  }
+  .card .hd{padding:16px 20px;border-bottom:1px solid var(--line-2);display:flex;align-items:center;justify-content:space-between;gap:12px}
+  .card .hd h3{font-size:12px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-2)}
+  .card .hd .sub{color:var(--mute);font-size:11.5px}
+  .card .bd{padding:18px 20px}
+  .card.flush .bd{padding:0}
+
+  /* Chart card */
+  .curve-card{padding:24px 26px 16px}
+  .curve-top{display:flex;gap:36px;flex-wrap:wrap;align-items:flex-end;margin-bottom:8px}
+  .stat{display:flex;flex-direction:column;gap:6px;min-width:0}
+  .stat .lbl{font-size:11px;color:var(--mute);text-transform:uppercase;letter-spacing:0.08em}
+  .stat .val{font-family:'Instrument Serif',serif;font-size:48px;line-height:1;letter-spacing:-0.02em}
+  .stat.sm .val{font-size:28px}
+  .stat .sub{font-size:11.5px;color:var(--mute)}
+  .stat.warn .val{color:var(--accent)}
+  .stat.cc .val{color:var(--cc)}
+  .svg-wrap{position:relative}
+  .tl-svg{width:100%;height:360px;display:block;touch-action:none;cursor:ew-resize}
+  .scrub-readout{
+    position:absolute;pointer-events:none;
+    background:var(--ink);color:var(--paper);padding:6px 10px;border-radius:8px;
+    font-size:11.5px;font-family:'JetBrains Mono',monospace;display:flex;gap:10px;align-items:baseline;
+    transform:translate(-50%,calc(-100% - 10px));white-space:nowrap;box-shadow:var(--shadow);
+    opacity:0;transition:opacity .15s
+  }
+  .scrub-readout.on{opacity:1}
+  .scrub-readout::after{content:"";position:absolute;bottom:-5px;left:50%;transform:translateX(-50%) rotate(45deg);width:10px;height:10px;background:var(--ink)}
+  .scrub-readout b{color:var(--paper)}
+  .scrub-readout .d{color:rgba(243,239,230,0.6)}
+
+  .controls{display:flex;align-items:center;gap:14px;padding:14px 0 4px;border-top:1px dashed var(--line);margin-top:14px;flex-wrap:wrap}
+  .controls .range{flex:1;min-width:300px;display:flex;align-items:center;gap:12px}
+  .controls input[type=range]{flex:1;-webkit-appearance:none;appearance:none;background:transparent;height:28px}
+  .controls input[type=range]::-webkit-slider-runnable-track{height:3px;background:var(--paper-3);border-radius:2px}
+  .controls input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:18px;height:26px;background:var(--paper);border:1.5px solid var(--ink);margin-top:-12px;border-radius:6px;cursor:ew-resize;box-shadow:var(--shadow)}
+  .controls input[type=range]::-moz-range-track{height:3px;background:var(--paper-3);border-radius:2px}
+  .controls input[type=range]::-moz-range-thumb{width:18px;height:26px;background:var(--paper);border:1.5px solid var(--ink);border-radius:6px;cursor:ew-resize}
+  .pip{font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--mute);padding:4px 8px;background:var(--paper-2);border-radius:6px;border:1px solid var(--line-2)}
+
+  /* Sidebar */
+  .kv{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--line-2);font-size:13px;align-items:center}
+  .kv:last-child{border-bottom:0}
+  .kv .k{color:var(--mute)}
+  .kv .v{font-weight:500;font-family:'JetBrains Mono',monospace}
+  .kv .v.pos{color:var(--green)}
+  .kv .v.neg{color:var(--accent)}
+  .kv .v .bucket-mini{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:4px;vertical-align:middle}
+
+  .alert{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border-radius:10px;background:var(--paper-2);border:1px solid var(--line-2);font-size:12.5px;margin-bottom:8px}
+  .alert:last-child{margin-bottom:0}
+  .alert .ic{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;flex-shrink:0;margin-top:1px}
+  .alert.warn{background:rgba(199,68,43,0.06);border-color:rgba(199,68,43,0.2)}
+  .alert.warn .ic{background:var(--accent);color:white}
+  .alert.cc{background:rgba(91,59,138,0.05);border-color:rgba(91,59,138,0.2)}
+  .alert.cc .ic{background:var(--cc);color:white}
+  .alert .t{font-weight:500;line-height:1.35}
+  .alert .s{color:var(--mute);font-size:11.5px;margin-top:2px}
+
+  /* Statement card */
+  .stmt-card{background:linear-gradient(135deg, #efe8d5 0%, #e6dcbe 100%);border:1px solid var(--cc);border-radius:var(--radius);padding:18px;position:relative;overflow:hidden;color:var(--ink)}
+  .stmt-card::before{content:"";position:absolute;top:-30px;right:-30px;width:140px;height:140px;border-radius:50%;background:radial-gradient(circle at 30% 30%, rgba(91,59,138,0.25), transparent 70%)}
+  .stmt-card .chip{width:28px;height:22px;border-radius:4px;background:linear-gradient(135deg,#c9b26e,#9c8342);margin-bottom:10px}
+  .stmt-card .tag{font-size:10px;letter-spacing:0.12em;color:var(--cc);text-transform:uppercase;font-weight:600}
+  .stmt-card .amt{font-family:'Instrument Serif',serif;font-size:40px;line-height:1;letter-spacing:-0.02em;margin:4px 0 6px}
+  .stmt-card .meta{font-size:12px;color:var(--ink-2);display:flex;gap:16px;flex-wrap:wrap}
+  .stmt-card .period{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;background:rgba(91,59,138,0.1);color:var(--cc);font-size:11px;font-weight:500;margin-top:10px}
+  .stmt-items{margin-top:14px;border-top:1px dashed rgba(91,59,138,0.3);padding-top:10px;max-height:0;overflow:hidden;transition:max-height .3s}
+  .stmt-items.open{max-height:400px;overflow:auto}
+  .stmt-row{display:grid;grid-template-columns:60px 1fr 70px;gap:10px;padding:6px 0;font-size:12px;border-bottom:1px dotted rgba(91,59,138,0.15)}
+  .stmt-row:last-child{border-bottom:0}
+  .stmt-row .d{color:var(--mute)}
+  .stmt-row .n{text-align:right;font-family:'JetBrains Mono',monospace}
+  .stmt-toggle{background:transparent;border:0;padding:0;color:var(--cc);font-size:12px;font-weight:500;cursor:pointer;margin-top:10px;display:inline-flex;align-items:center;gap:4px}
+  .stmt-toggle:hover{text-decoration:underline}
+  .stmt-actions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+  .stmt-actions .btn{padding:6px 12px;font-size:12px}
+
+  /* Ledger */
+  .ledger{width:100%;border-collapse:collapse;font-size:13px}
+  .ledger th{text-align:left;padding:10px 16px;font-size:10.5px;letter-spacing:0.1em;text-transform:uppercase;color:var(--mute);font-weight:600;border-bottom:1px solid var(--line)}
+  .ledger th.num{text-align:right}
+  .ledger td{padding:12px 16px;border-bottom:1px solid var(--line-2);vertical-align:middle}
+  .ledger td.num{text-align:right;font-family:'JetBrains Mono',monospace}
+  .ledger tr:hover td{background:var(--paper-2)}
+  .ledger .tag{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:500;border:1px solid var(--line)}
+  .ledger .tag .sw{width:6px;height:6px;border-radius:50%}
+  .ledger .tag.personal .sw{background:var(--personal)}
+  .ledger .tag.maple .sw{background:var(--maple)}
+  .ledger .tag.cc{border-color:var(--cc);color:var(--cc);background:rgba(91,59,138,0.06)}
+  .ledger .ic-cell{display:flex;align-items:center;gap:10px}
+  .ledger .icon{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;background:var(--paper-2);color:var(--ink-2);font-size:12px;flex-shrink:0}
+  .ledger .icon.in{background:rgba(46,106,58,0.1);color:var(--green)}
+  .ledger .icon.out{background:var(--paper-2)}
+  .ledger .icon.stmt{background:rgba(91,59,138,0.1);color:var(--cc)}
+  .ledger .bill-name{font-weight:500}
+  .ledger .bill-sub{color:var(--mute);font-size:11.5px}
+  .ledger tr.stmt-row-head td{background:rgba(91,59,138,0.04)}
+  .ledger tr.stmt-row-head td:first-child{border-left:2px solid var(--cc)}
+  .ledger tr.stmt-item td{background:rgba(91,59,138,0.02);font-size:12px;color:var(--ink-2)}
+  .ledger tr.stmt-item td:first-child{border-left:2px solid var(--cc);padding-left:54px}
+  .reco-pill{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:500;border:1px dashed var(--line);color:var(--mute)}
+  .reco-pill.ok{border-style:solid;border-color:var(--green);color:var(--green);background:rgba(46,106,58,0.06)}
+
+  /* Variable bars */
+  .var-row{display:grid;grid-template-columns:180px 1fr 160px;gap:16px;align-items:center;padding:12px 0;border-bottom:1px solid var(--line-2)}
+  .var-row:last-child{border-bottom:0}
+  .var-row .cat{font-weight:500}
+  .var-row .cat .sub{color:var(--mute);font-size:11.5px;font-weight:400}
+  .bbar{position:relative;height:16px;background:var(--paper-2);border-radius:8px;overflow:hidden;border:1px solid var(--line-2)}
+  .bbar .fill{position:absolute;inset:0 auto 0 0;background:var(--ink);border-radius:7px;transition:width .4s cubic-bezier(0.2,0.8,0.2,1)}
+  .bbar .fill.over{background:var(--accent)}
+  .bbar .fill.good{background:var(--green)}
+  .bbar .marker{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--ink);opacity:.35}
+  .bbar .marker::after{content:"BUDGET";position:absolute;top:-14px;left:4px;font-size:9px;letter-spacing:0.1em;color:var(--mute);white-space:nowrap}
+  .var-row .nums{text-align:right;font-family:'JetBrains Mono',monospace;font-size:12.5px}
+  .var-row .nums .v{font-weight:600;font-size:13.5px}
+  .var-row .nums .v.over{color:var(--accent)}
+  .var-row .nums .v.good{color:var(--green)}
+  .var-row .nums .v.ok{color:var(--ink)}
+  .var-row .nums .s{color:var(--mute);font-size:11px;margin-top:2px}
+
+  /* Notion preview */
+  .notion-hd{padding:10px 16px;background:var(--paper-2);border-bottom:1px solid var(--line-2);font-size:11px;color:var(--mute);display:flex;gap:10px;align-items:center}
+  .notion-hd b{color:var(--ink);font-weight:600}
+  .notion-row{display:grid;grid-template-columns:1.6fr 80px 90px 100px 110px 1.2fr;gap:12px;padding:10px 16px;border-bottom:1px solid var(--line-2);font-size:12.5px;align-items:center}
+  .notion-row:hover{background:var(--paper-2)}
+  .notion-row .num{text-align:right;font-family:'JetBrains Mono',monospace}
+  .notion-row .name{display:flex;align-items:center;gap:8px;font-weight:500}
+  .notion-row .name .ico{width:18px;height:18px;border-radius:5px;background:var(--paper-3);display:grid;place-items:center;font-size:10px;flex-shrink:0}
+  .notion-row .date{color:var(--mute);font-family:'JetBrains Mono',monospace;font-size:11.5px}
+  .chip{display:inline-block;padding:2px 7px;border-radius:4px;font-size:10.5px;background:var(--paper-3);color:var(--ink-2)}
+  .chip.mini{font-size:10px;padding:1px 5px}
+  .chips{display:flex;gap:4px;flex-wrap:wrap}
+
+  /* Modal */
+  .backdrop{position:fixed;inset:0;background:rgba(19,18,17,0.5);backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;z-index:100;padding:30px}
+  .backdrop.open{display:flex}
+  .modal{background:var(--paper);border-radius:16px;width:100%;max-width:820px;max-height:88vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 30px 60px -20px rgba(0,0,0,0.4),0 10px 20px -10px rgba(0,0,0,0.3);border:1px solid var(--line)}
+  .modal .mhd{padding:18px 22px;border-bottom:1px solid var(--line-2);display:flex;justify-content:space-between;align-items:center;gap:16px}
+  .modal .mhd .ttl{font-family:'Instrument Serif',serif;font-size:22px;letter-spacing:-0.01em}
+  .modal .mhd .ttl em{font-style:italic;color:var(--accent)}
+  .steps{display:flex;gap:8px;align-items:center}
+  .step{width:22px;height:22px;border-radius:50%;background:var(--paper-2);display:grid;place-items:center;font-size:11px;color:var(--mute);font-weight:600;border:1px solid var(--line-2)}
+  .step.on{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+  .step.done{background:var(--green);color:white;border-color:var(--green)}
+  .step-bar{flex:1;height:1px;background:var(--line-2);margin:0 -2px}
+  .step-bar.done{background:var(--green)}
+  .mbd{padding:24px;overflow:auto;flex:1}
+  .mft{padding:16px 22px;border-top:1px solid var(--line-2);display:flex;justify-content:space-between;align-items:center;gap:12px;background:var(--paper-2)}
+  .x{background:transparent;border:1px solid var(--line);border-radius:8px;width:30px;height:30px;cursor:pointer;color:var(--ink-2);display:grid;place-items:center;font-size:16px;line-height:1}
+
+  /* Source picker */
+  .src-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+  .src-card{background:var(--paper);border:1.5px solid var(--line);border-radius:12px;padding:16px;text-align:left;font:inherit;cursor:pointer;display:flex;flex-direction:column;gap:10px;transition:all .15s}
+  .src-card:hover{border-color:var(--ink);background:var(--paper-2);transform:translateY(-1px);box-shadow:var(--shadow)}
+  .src-card .ic{width:36px;height:36px;border-radius:10px;display:grid;place-items:center;font-size:16px;color:white}
+  .src-card.cc .ic{background:var(--cc)}
+  .src-card.debit .ic{background:var(--ink)}
+  .src-card.mixed .ic{background:var(--mute)}
+  .src-card .t{font-weight:600;font-size:14px}
+  .src-card .d{font-size:12px;color:var(--ink-2);line-height:1.5;flex:1}
+  .src-card .h{font-size:11px;color:var(--mute);border-top:1px dashed var(--line);padding-top:8px}
+
+  /* Dropzone */
+  .drop{border:2px dashed var(--line);border-radius:12px;padding:32px;text-align:center;background:var(--paper-2);cursor:pointer;transition:all .15s;position:relative}
+  .drop:hover, .drop.hot{border-color:var(--accent);background:var(--paper)}
+  .drop .dic{width:48px;height:48px;border-radius:12px;background:var(--paper);display:grid;place-items:center;margin:0 auto 12px;font-size:22px;border:1px solid var(--line)}
+  .drop .dt{font-weight:600;font-size:14px;margin-bottom:4px}
+  .drop .ds{color:var(--mute);font-size:12px}
+  .drop .dh{margin-top:14px;font-size:11px;color:var(--mute);padding-top:12px;border-top:1px dashed var(--line)}
+
+  /* Reconcile review */
+  .rev-info{padding:10px 14px;background:var(--paper-2);border-radius:10px;font-size:12.5px;color:var(--ink-2);margin-bottom:14px;display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+  .rev-info .pill{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;background:var(--paper);border:1px solid var(--line);font-size:11.5px;font-weight:500}
+  .rev-info .pill.cc{border-color:var(--cc);color:var(--cc)}
+  .rev-info .pill.lock{border-color:var(--green);color:var(--green)}
+  .rev-table{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--paper)}
+  .rev-thead{display:grid;grid-template-columns:30px 1.7fr 80px 1.4fr 100px 70px;gap:10px;padding:10px 14px;background:var(--ink);color:var(--paper);font-size:10.5px;letter-spacing:0.08em;text-transform:uppercase;font-weight:600}
+  .rev-thead .num{text-align:right}
+  .rev-row{display:grid;grid-template-columns:30px 1.7fr 80px 1.4fr 100px 70px;gap:10px;padding:12px 14px;align-items:center;border-bottom:1px solid var(--line-2);font-size:12.5px;transition:background .12s}
+  .rev-row:last-child{border-bottom:0}
+  .rev-row:hover{background:var(--paper-2)}
+  .rev-row.um{background:#fbf5e2}
+  .rev-row.um:hover{background:#f7efd5}
+  .rev-row .raw{min-width:0}
+  .rev-row .raw .r{font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12.5px}
+  .rev-row .raw .d{color:var(--mute);font-size:11px;font-family:'JetBrains Mono',monospace}
+  .rev-row .num{text-align:right;font-family:'JetBrains Mono',monospace;font-weight:500}
+  .mtag{display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:500;border:1px solid var(--line);max-width:100%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+  .mtag.ok{border-color:var(--green);color:var(--green);background:rgba(46,106,58,0.06)}
+  .mtag.q{border-style:dashed;color:var(--mute)}
+  .bkt-sel{display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:500;background:var(--paper-2);border:1px solid var(--line);cursor:pointer}
+  .bkt-sel.locked{cursor:not-allowed;opacity:.85}
+  .bkt-sel .sw{width:6px;height:6px;border-radius:50%}
+  .bkt-sel.personal .sw{background:var(--personal)}
+  .bkt-sel.maple .sw{background:var(--maple)}
+  .conf{display:inline-flex;padding:2px 7px;border-radius:4px;font-size:10px;letter-spacing:0.05em;text-transform:uppercase;font-weight:600}
+  .conf.high{background:rgba(46,106,58,0.1);color:var(--green)}
+  .conf.med{background:rgba(199,137,43,0.12);color:#8a6213}
+  .conf.low{background:var(--paper-2);color:var(--mute)}
+  input[type=checkbox]{accent-color:var(--ink);width:16px;height:16px;cursor:pointer}
+
+  /* Tweaks panel */
+  .tweaks{position:fixed;right:22px;bottom:22px;width:320px;background:var(--paper);border:1px solid var(--line);border-radius:14px;box-shadow:0 20px 40px -10px rgba(0,0,0,0.2);padding:16px 18px;z-index:60;max-height:75vh;overflow:auto}
+  .tweaks .thd{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+  .tweaks .thd b{font-family:'Instrument Serif',serif;font-size:18px;font-weight:400}
+  .tweaks label{display:block;margin-bottom:12px}
+  .tweaks label .lb{display:flex;justify-content:space-between;font-size:11.5px;margin-bottom:6px;color:var(--ink-2)}
+  .tweaks label .lb b{font-family:'JetBrains Mono',monospace;color:var(--ink);font-weight:500}
+  .tweaks input[type=range]{width:100%}
+
+  @media (max-width: 1100px){
+    .grid{grid-template-columns:1fr}
+    .row2{grid-template-columns:1fr}
+    .hero{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+
+<header class="bar">
+  <div class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17 L9 11 L13 15 L21 7"/><circle cx="9" cy="11" r="1.6" fill="currentColor"/><circle cx="13" cy="15" r="1.6" fill="currentColor"/></svg></div>
+  <div class="brand"><b>Future Cash Timeline</b><small>connected to Notion · Budgets DB</small></div>
+  <div class="seg" role="group" aria-label="Budget">
+    <button data-budget="all" aria-pressed="true"><span class="sw" style="background:var(--ink)"></span>All</button>
+    <button data-budget="personal"><span class="sw" style="background:var(--personal)"></span>Personal</button>
+    <button data-budget="maple"><span class="sw" style="background:var(--maple)"></span>Maple</button>
+  </div>
+  <div class="sync"><span class="dot"></span><span>Notion · synced 2m ago</span></div>
+  <div class="spacer"></div>
+  <button class="btn ghost" id="open-reco"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/></svg>Reconcile</button>
+</header>
+
+<main class="page">
+  <section class="hero">
+    <div>
+      <h1>Your <em>cash</em> over time.</h1>
+      <p>Drag the scrubber on the curve below to project your balance on any future day. Forecast from Notion recurrence · CC purchases bundle on statement due · variable spend reconciles when you commit actuals.</p>
+    </div>
+    <div class="legend">
+      <span><i></i>actual</span>
+      <span><i class="p"></i>Personal</span>
+      <span><i class="m"></i>Maple</span>
+      <span><i class="fc"></i>forecast</span>
+      <span><i class="today"></i>today</span>
+      <span>▲ income · ▼ bill</span>
+      <span><i class="cc"></i>◆ CC stmt</span>
+    </div>
+  </section>
+
+  <section class="grid">
+    <div class="card curve-card">
+      <div class="curve-top">
+        <div class="stat">
+          <div class="lbl">projected cash on <span id="tl-date">Jun 14, 2026</span></div>
+          <div class="val mono" id="tl-amount">A$8,420</div>
+          <div class="sub" id="tl-sub">+57 days · A$5,210 Personal · A$3,210 Maple</div>
+        </div>
+        <div class="stat sm warn">
+          <div class="lbl">low point · next 90d</div>
+          <div class="val mono" id="tl-low">A$3,115</div>
+          <div class="sub" id="tl-low-sub">Jul 02 · below A$3,500 alert</div>
+        </div>
+        <div class="stat sm cc">
+          <div class="lbl">next CC statement</div>
+          <div class="val mono" id="tl-cc">A$1,180</div>
+          <div class="sub" id="tl-cc-sub">due May 25 · 8 items</div>
+        </div>
+      </div>
+      <div class="svg-wrap">
+        <svg class="tl-svg" id="tl-svg" viewBox="0 0 1000 360" preserveAspectRatio="none"></svg>
+        <div class="scrub-readout" id="scrub-readout"></div>
+      </div>
+      <div class="controls">
+        <div class="range">
+          <span class="pip">SCRUB</span>
+          <input id="tl-range" type="range" min="0" max="180" value="57" step="1">
+          <span class="pip" id="tl-range-label">+57d</span>
+        </div>
+        <div class="seg" role="group">
+          <button data-h="30">1M</button>
+          <button data-h="90" aria-pressed="true">3M</button>
+          <button data-h="180">6M</button>
+          <button data-h="365">1Y</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="stack">
+      <div class="card">
+        <div class="hd"><h3>On this date</h3><span class="sub" id="sb-date">Jun 14</span></div>
+        <div class="bd" id="sb-kv">
+          <!-- filled -->
+        </div>
+      </div>
+
+      <div class="stmt-card">
+        <div class="chip"></div>
+        <div class="tag">CBA Mastercard · next statement</div>
+        <div class="amt mono" id="cc-amt">A$1,180</div>
+        <div class="meta">
+          <span>due <b>May 25</b></span>
+          <span>closed May 12</span>
+        </div>
+        <div class="period">period · Apr 13 – May 12</div>
+        <button class="stmt-toggle" id="stmt-toggle">▸ show 8 items</button>
+        <div class="stmt-items" id="stmt-items"></div>
+        <div class="stmt-actions">
+          <button class="btn cc" id="stmt-import">Import statement</button>
+          <button class="btn ghost" id="stmt-paste">Paste screenshot</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="hd"><h3>Alerts</h3></div>
+        <div class="bd">
+          <div class="alert warn">
+            <div class="ic">⚠</div>
+            <div><div class="t">Balance dips to A$3,115 on Jul 02</div><div class="s">below your A$3,500 alert threshold. Rent + CC statement land the same week.</div></div>
+          </div>
+          <div class="alert cc">
+            <div class="ic">◆</div>
+            <div><div class="t">Dining tracking 34% over</div><div class="s">A$428 spent of A$320 envelope this month.</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div style="height:22px"></div>
+
+  <section class="row2">
+    <div class="card">
+      <div class="hd"><h3>Variable spend · this month</h3><span class="sub">budget vs actual-to-date</span></div>
+      <div class="bd" id="var-bars"></div>
+    </div>
+    <div class="card">
+      <div class="hd"><h3>Reconcile variable spend</h3><span class="sub">paste · drop · upload</span></div>
+      <div class="bd">
+        <div class="drop" id="drop1" tabindex="0">
+          <div class="dic">⎘</div>
+          <div class="dt">Drop a screenshot, CSV, or PDF</div>
+          <div class="ds">I'll parse rows, match them to forecasted bills, and flag new variable-spend items for a category.</div>
+          <div class="dh">supports PNG · JPG · PDF · CSV · Cmd+V to paste</div>
+        </div>
+        <div style="font-size:11px;color:var(--mute);letter-spacing:0.1em;text-transform:uppercase;text-align:center;margin:18px 0 10px">last reconciled</div>
+        <div class="kv"><span class="k">Apr 14 · CBA Mastercard (statement)</span><span class="v pos">+5 matched · 3 new</span></div>
+        <div class="kv"><span class="k">Apr 07 · CBA txn feed</span><span class="v pos">+12 matched</span></div>
+        <div class="kv"><span class="k">Mar 28 · DoorDash email</span><span class="v">A$38.20 → Dining</span></div>
+      </div>
+    </div>
+  </section>
+
+  <div style="height:22px"></div>
+
+  <section class="row2">
+    <div class="card flush">
+      <div class="hd" style="padding:16px 20px"><h3>Upcoming · next 90 days</h3><span class="sub" id="ledger-sub">expanded from recurrence</span></div>
+      <div style="overflow:auto;max-height:560px">
+        <table class="ledger" id="ledger">
+          <thead><tr><th>Due</th><th>Bill</th><th>Budget</th><th>Payment</th><th class="num">Amount</th><th class="num">Bal after</th><th>Status</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card flush">
+      <div class="hd" style="padding:16px 20px"><h3>From Notion · Expenses</h3><span class="sub">schema preview</span></div>
+      <div class="notion-hd"><b>Expenses</b> · 15 rows · Bill, Amount (AUD), Due, Recur, Payment, Tags</div>
+      <div id="notion-rows" style="max-height:520px;overflow:auto"></div>
+    </div>
+  </section>
+</main>
+
+<!-- Reconcile modal -->
+<div class="backdrop" id="reco-modal">
+  <div class="modal">
+    <div class="mhd">
+      <div>
+        <div class="ttl" id="reco-title">Reconcile <em>spend</em></div>
+        <div style="font-size:12px;color:var(--mute);margin-top:2px" id="reco-sub">step 1 of 3 · what are you uploading?</div>
+      </div>
+      <div class="steps" id="reco-steps">
+        <div class="step on" data-s="1">1</div><div class="step-bar"></div>
+        <div class="step" data-s="2">2</div><div class="step-bar"></div>
+        <div class="step" data-s="3">3</div>
+      </div>
+      <button class="x" id="reco-close">×</button>
+    </div>
+    <div class="mbd" id="reco-body"></div>
+    <div class="mft" id="reco-foot"></div>
+  </div>
+</div>
+
+<script>
+/* ———— Data ———— */
+const RAW = [
+  {bill:"Salary",             amount:4250, due:"2026-04-24", recur:{n:2,unit:"Week(s)"},  budget:"Income",       tags:["AIncome"],                     payment:"Direct Debit", bucket:"personal", ico:"💰"},
+  {bill:"Rent",               amount:1800, due:"2026-04-21", recur:{n:1,unit:"Month(s)"}, budget:"Expense",      tags:["Fixed expense"],               payment:"Direct Debit", bucket:"personal", ico:"🏠"},
+  {bill:"Phone plan",         amount:45,   due:"2026-05-02", recur:{n:1,unit:"Month(s)"}, budget:"subscription", tags:["Subscriptions"],               payment:"Credit",       bucket:"personal", ico:"📱"},
+  {bill:"Spotify",            amount:16,   due:"2026-04-28", recur:{n:1,unit:"Month(s)"}, budget:"subscription", tags:["Subscriptions"],               payment:"Credit",       bucket:"personal", ico:"♪"},
+  {bill:"Gym",                amount:62,   due:"2026-05-12", recur:{n:1,unit:"Month(s)"}, budget:"Expense",      tags:["Fixed expense"],               payment:"Direct Debit", bucket:"personal", ico:"🏋"},
+  {bill:"Private health",     amount:198,  due:"2026-05-14", recur:{n:1,unit:"Month(s)"}, budget:"Expense",      tags:["Fixed expense"],               payment:"Direct Debit", bucket:"personal", ico:"⚕"},
+  {bill:"Car rego",           amount:860,  due:"2026-06-18", recur:{n:1,unit:"Year(s)"},  budget:"Expense",      tags:["Fixed expense"],               payment:"BPAY",         bucket:"personal", ico:"🚗"},
+  {bill:"Partner salary",     amount:4100, due:"2026-04-25", recur:{n:2,unit:"Week(s)"},  budget:"Income",       tags:["Maple-Income"],                payment:"Direct Debit", bucket:"maple",    ico:"💰"},
+  {bill:"Mortgage",           amount:2860, due:"2026-05-01", recur:{n:1,unit:"Month(s)"}, budget:"Expense",      tags:["Maple-Bills","Fixed expense"], payment:"DD (Shared)",  bucket:"maple",    ico:"🏡"},
+  {bill:"Council rates",      amount:1420, due:"2026-06-30", recur:{n:3,unit:"Month(s)"}, budget:"Expense",      tags:["Maple-Bills"],                 payment:"BPAY",         bucket:"maple",    ico:"🏛"},
+  {bill:"Electricity",        amount:310,  due:"2026-05-08", recur:{n:3,unit:"Month(s)"}, budget:"Expense",      tags:["Maple-Bills"],                 payment:"DD (Shared)",  bucket:"maple",    ico:"⚡"},
+  {bill:"Globird internet",   amount:79,   due:"2026-04-27", recur:{n:1,unit:"Month(s)"}, budget:"Expense",      tags:["Maple-Bills","Subscriptions"], payment:"Credit",       bucket:"personal", ico:"🌐"},
+  {bill:"Streaming bundle",   amount:32,   due:"2026-05-08", recur:{n:1,unit:"Month(s)"}, budget:"subscription", tags:["Subscriptions"],               payment:"Credit",       bucket:"personal", ico:"📺"},
+  {bill:"Home insurance",     amount:1680, due:"2026-09-12", recur:{n:1,unit:"Year(s)"},  budget:"Expense",      tags:["Maple-Bills","Fixed expense"], payment:"BPAY",         bucket:"maple",    ico:"🛡"},
+];
+
+const VAR = [
+  {cat:"Groceries",   sub:"Coles, Aldi, Woolies", budget:900, actualToDate:612},
+  {cat:"Dining out",  sub:"DoorDash, restaurants", budget:320, actualToDate:428},
+  {cat:"Petrol",      sub:"BP, Caltex, Shell",   budget:240, actualToDate:144},
+  {cat:"Ad-hoc",      sub:"Amazon, Kmart, misc", budget:300, actualToDate:186},
+];
+
+const CC_CYCLE = { close:12, due:25 };
+const CC_NEXT_DUE = "2026-05-25";
+const CC_ITEMS = [
+  {date:"Apr 13", bill:"Coles Woodcroft",     amt:86.40},
+  {date:"Apr 15", bill:"DoorDash · Thai 54",  amt:38.20},
+  {date:"Apr 17", bill:"Amazon AU · cable",   amt:22.99},
+  {date:"Apr 21", bill:"BP Service Station",  amt:72.00},
+  {date:"Apr 28", bill:"Spotify",             amt:16.00},
+  {date:"May 02", bill:"Phone plan",          amt:45.00},
+  {date:"May 06", bill:"Globird internet",    amt:79.00},
+  {date:"May 08", bill:"Streaming bundle",    amt:32.00},
+];
+const CC_TOTAL = CC_ITEMS.reduce((t,i)=>t+i.amt,0);
+
+const TODAY = new Date(2026,3,18);
+const START = { personal:7400, maple:800 };
+
+/* ———— Utils ———— */
+const addDays = (d,n)=>{ const x=new Date(d); x.setDate(x.getDate()+n); return x; };
+const diffDays = (a,b)=>Math.round((b-a)/86400000);
+const iso = d=>d.toISOString().slice(0,10);
+const fmtAUD = n=>(n<0?'−A$':'A$')+Math.abs(Math.round(n)).toLocaleString('en-AU');
+const fmtAUDc = n=>(n<0?'−A$':'A$')+Math.abs(n).toFixed(2);
+const fmtMD = d=>d.toLocaleDateString('en-AU',{month:'short',day:'2-digit'});
+const fmtLong = d=>d.toLocaleDateString('en-AU',{month:'short',day:'2-digit',year:'numeric'});
+
+function unitToDays(n,unit){ if(unit==="Day(s)")return n; if(unit==="Week(s)")return n*7; return null; }
+
+function expand(rows, days){
+  const end = addDays(TODAY,days), out = [];
+  for(const r of rows){
+    let d = new Date(r.due+"T00:00:00");
+    while(d > TODAY){
+      const prev = new Date(d);
+      if(r.recur.unit==="Month(s)") prev.setMonth(prev.getMonth()-r.recur.n);
+      else if(r.recur.unit==="Year(s)") prev.setFullYear(prev.getFullYear()-r.recur.n);
+      else { const a=unitToDays(r.recur.n,r.recur.unit); if(!a) break; prev.setDate(prev.getDate()-a); }
+      if(prev < TODAY) break;
+      d = prev;
+    }
+    let g=0;
+    while(d <= end && g<500){
+      if(d >= TODAY){
+        const isCC = r.payment==="Credit";
+        out.push({...r, occ:new Date(d), isCC});
+      }
+      if(r.recur.unit==="Month(s)") d.setMonth(d.getMonth()+r.recur.n);
+      else if(r.recur.unit==="Year(s)") d.setFullYear(d.getFullYear()+r.recur.n);
+      else { const a=unitToDays(r.recur.n,r.recur.unit); if(!a) break; d.setDate(d.getDate()+a); }
+      g++;
+    }
+  }
+  return out;
+}
+function nextStmtDue(d){
+  let y=d.getFullYear(), m=d.getMonth(), day=d.getDate();
+  if(day > CC_CYCLE.close) m += 1;
+  return new Date(y, m+1, CC_CYCLE.due);
+}
+
+/* ———— State ———— */
+let budgetFilter='all', tlHorizon=90;
+let SERIES = [];
+
+function rebuildSeries(days=180){
+  const rows = RAW.filter(r=>budgetFilter==='all'?true:r.bucket===budgetFilter);
+  const events = expand(rows, days);
+  const ccBundles = {};
+  for(const e of events){
+    if(!e.isCC || e.budget==='Income') continue;
+    const due = nextStmtDue(e.occ);
+    if(due > addDays(TODAY,days)) continue;
+    const key = iso(due);
+    ccBundles[key] = ccBundles[key] || {items:[], bucket:'personal', total:0};
+    ccBundles[key].items.push({date:fmtMD(e.occ), bill:e.bill, amount:e.amount});
+    ccBundles[key].total += e.amount;
+  }
+  SERIES = [];
+  let balP = budgetFilter==='maple' ? 0 : START.personal;
+  let balM = budgetFilter==='personal' ? 0 : START.maple;
+  for(let i=0;i<=days;i++){
+    const d = addDays(TODAY,i), key = iso(d);
+    const todays = events.filter(e=>iso(e.occ)===key && !e.isCC);
+    for(const e of todays){
+      const delta = e.budget==='Income' ? +e.amount : -e.amount;
+      if(e.bucket==='personal') balP += delta; else balM += delta;
+    }
+    const bundle = ccBundles[key];
+    if(bundle){
+      balP -= bundle.total;
+      todays.push({isStmt:true, bill:"CBA Mastercard statement", amount:bundle.total, bucket:'personal', items:bundle.items, occ:d, budget:'Expense', payment:'Credit', ico:'◆'});
+    }
+    // gentle daily burn for variable spend
+    if(i>0){
+      const burn = VAR.reduce((t,v)=>t+v.budget,0)/30;
+      if(budgetFilter!=='maple') balP -= burn*0.65;
+      if(budgetFilter!=='personal') balM -= burn*0.35;
+    }
+    SERIES.push({i,d,balP,balM,bal:balP+balM,events:todays});
+  }
+}
+
+/* ———— Chart ———— */
+const svg = document.getElementById('tl-svg');
+const readout = document.getElementById('scrub-readout');
+
+function drawChart(series, scrub){
+  const vb = svg.getAttribute('viewBox').split(' ');
+  const W=+vb[2], H=+vb[3];
+  const pad={l:64,r:18,t:32,b:34};
+  const xs = i => pad.l + (i/(series.length-1))*(W-pad.l-pad.r);
+
+  // Decide what series to draw
+  const showSplit = budgetFilter==='all';
+  const seriesDefs = showSplit
+    ? [
+        {key:'balP', color:'#1f4f7a', label:'Personal', getVal:s=>s.balP},
+        {key:'balM', color:'#6b3fa0', label:'Maple',    getVal:s=>s.balM},
+      ]
+    : budgetFilter==='personal'
+      ? [{key:'balP', color:'#1f4f7a', label:'Personal', getVal:s=>s.balP}]
+      : [{key:'balM', color:'#6b3fa0', label:'Maple',    getVal:s=>s.balM}];
+
+  // y domain spanning all drawn series
+  const allVals = [];
+  for(const sd of seriesDefs) for(const s of series) allVals.push(sd.getVal(s));
+  const max = Math.max(...allVals)*1.12, min = Math.min(0, Math.min(...allVals)*0.88);
+  const ys = v => pad.t + (1-(v-min)/(max-min))*(H-pad.t-pad.b);
+  let g='';
+
+  // defs
+  g += `<defs>
+    <linearGradient id="area-p" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1f4f7a" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#1f4f7a" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="area-m" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#6b3fa0" stop-opacity="0.16"/>
+      <stop offset="100%" stop-color="#6b3fa0" stop-opacity="0"/>
+    </linearGradient>
+  </defs>`;
+
+  // grid
+  const steps=4;
+  for(let k=0;k<=steps;k++){
+    const v = min + (max-min)*k/steps, y=ys(v);
+    g += `<line x1="${pad.l}" x2="${W-pad.r}" y1="${y}" y2="${y}" stroke="rgba(19,18,17,0.06)"/>`;
+    g += `<text x="${pad.l-10}" y="${y+4}" font-size="10.5" fill="#8a8275" text-anchor="end" font-family="JetBrains Mono,monospace">A$${Math.round(v/1000)}k</text>`;
+  }
+  if(min < 0) g += `<line x1="${pad.l}" x2="${W-pad.r}" y1="${ys(0)}" y2="${ys(0)}" stroke="#c7442b" stroke-width="1" stroke-dasharray="3,3" opacity="0.4"/>`;
+
+  // month gridlines & labels
+  let curMonth = -1;
+  for(const s of series){
+    const m = s.d.getMonth();
+    if(m !== curMonth){
+      curMonth = m;
+      const x = xs(s.i);
+      g += `<line x1="${x}" x2="${x}" y1="${pad.t}" y2="${H-pad.b}" stroke="rgba(19,18,17,0.05)"/>`;
+      g += `<text x="${x+5}" y="${H-14}" font-size="10.5" fill="#8a8275" font-family="Inter,sans-serif" font-weight="500">${s.d.toLocaleDateString('en-AU',{month:'short'})}</text>`;
+    }
+  }
+
+  // draw each series: area fill + dashed line
+  seriesDefs.forEach((sd, ix)=>{
+    const gradId = ix===0 ? 'area-p' : 'area-m';
+    let area = `M ${xs(0)} ${ys(sd.getVal(series[0]))} `;
+    for(let i=1;i<series.length;i++) area += `L ${xs(i)} ${ys(sd.getVal(series[i]))} `;
+    area += `L ${xs(series.length-1)} ${H-pad.b} L ${xs(0)} ${H-pad.b} Z`;
+    g += `<path d="${area}" fill="url(#${gradId})"/>`;
+
+    let line = `M ${xs(0)} ${ys(sd.getVal(series[0]))} `;
+    for(let i=1;i<series.length;i++) line += `L ${xs(i)} ${ys(sd.getVal(series[i]))} `;
+    g += `<path d="${line}" fill="none" stroke="${sd.color}" stroke-width="2.2" stroke-dasharray="6,4" stroke-linecap="round" stroke-linejoin="round"/>`;
+
+    // today anchor dot per line
+    g += `<circle cx="${xs(0)}" cy="${ys(sd.getVal(series[0]))}" r="5.5" fill="${sd.color}"/>`;
+    g += `<circle cx="${xs(0)}" cy="${ys(sd.getVal(series[0]))}" r="9" fill="none" stroke="${sd.color}" stroke-opacity="0.2" stroke-width="1"/>`;
+
+    // end-of-series label
+    const lastS = series[series.length-1];
+    g += `<text x="${xs(series.length-1)-6}" y="${ys(sd.getVal(lastS))-8}" font-size="10.5" fill="${sd.color}" font-family="Inter,sans-serif" font-weight="600" text-anchor="end">${sd.label}</text>`;
+  });
+
+  // TODAY marker once
+  g += `<text x="${xs(0)+14}" y="${pad.t+12}" font-size="10.5" fill="#131211" font-family="Inter,sans-serif" font-weight="600">TODAY · actual ends</text>`;
+
+  // event ticks — use the relevant series' y for this bucket
+  for(const s of series){
+    for(const e of s.events){
+      const up = e.budget==='Income';
+      const isStmt = e.isStmt;
+      // map to correct lane
+      let yVal;
+      if(showSplit) yVal = e.bucket==='maple' ? s.balM : s.balP;
+      else yVal = seriesDefs[0].getVal(s);
+      const x = xs(s.i), y = ys(yVal);
+      const color = isStmt ? '#5b3b8a' : (up ? '#2e6a3a' : '#131211');
+      const len = isStmt ? 14 : 10;
+      g += `<line x1="${x}" x2="${x}" y1="${y}" y2="${y+(up?-len:len)}" stroke="${color}" stroke-width="${isStmt?2:1.3}"/>`;
+      const sym = isStmt ? '◆' : (up ? '▲' : '▼');
+      g += `<text x="${x}" y="${y+(up?-len-4:len+11)}" font-size="10" text-anchor="middle" fill="${color}" font-family="Inter,sans-serif" font-weight="600">${sym}</text>`;
+    }
+  }
+
+  // scrubber — dot(s) per drawn series; readout shows all
+  if(scrub != null && series[scrub]){
+    const x = xs(scrub);
+    g += `<line x1="${x}" x2="${x}" y1="${pad.t-8}" y2="${H-pad.b}" stroke="#c7442b" stroke-dasharray="4,4" stroke-width="1.5"/>`;
+    // place readout anchored to topmost of the drawn series (lowest y)
+    let topY = Infinity;
+    for(const sd of seriesDefs){
+      const yv = ys(sd.getVal(series[scrub]));
+      g += `<circle cx="${x}" cy="${yv}" r="6.5" fill="#f3efe6" stroke="${sd.color}" stroke-width="2.5"/>`;
+      g += `<circle cx="${x}" cy="${yv}" r="3" fill="${sd.color}"/>`;
+      if(yv < topY) topY = yv;
+    }
+    const rect = svg.getBoundingClientRect();
+    const xPct = x/W, yPct = topY/H;
+    readout.style.left = (xPct*rect.width) + 'px';
+    readout.style.top  = (yPct*rect.height) + 'px';
+    readout.classList.add('on');
+    if(showSplit){
+      readout.innerHTML = `<span class="d">${fmtMD(series[scrub].d)}</span>`+
+        `<b style="color:#8ec5ff">${fmtAUD(series[scrub].balP)}</b>`+
+        `<span class="d">·</span>`+
+        `<b style="color:#d2b8f5">${fmtAUD(series[scrub].balM)}</b>`;
+    } else {
+      readout.innerHTML = `<span class="d">${fmtMD(series[scrub].d)}</span><b>${fmtAUD(seriesDefs[0].getVal(series[scrub]))}</b>`;
+    }
+  } else {
+    readout.classList.remove('on');
+  }
+
+  svg.innerHTML = g;
+}
+
+/* ———— Wire up ———— */
+const range = document.getElementById('tl-range');
+const rangeLabel = document.getElementById('tl-range-label');
+
+function update(){
+  const series = SERIES.slice(0, tlHorizon+1);
+  range.max = tlHorizon;
+  if(+range.value > tlHorizon) range.value = Math.floor(tlHorizon/2);
+  const i = +range.value;
+  drawChart(series, i);
+  const s = series[i];
+  rangeLabel.textContent = `+${i}d`;
+  document.getElementById('tl-date').textContent = fmtLong(s.d);
+  if(budgetFilter==='all'){
+    document.getElementById('tl-amount').innerHTML = `<span style="color:var(--personal)">${fmtAUD(s.balP)}</span> <span style="color:var(--mute);font-size:28px">/</span> <span style="color:var(--maple)">${fmtAUD(s.balM)}</span>`;
+    document.getElementById('tl-sub').innerHTML = `+${i} days · <span style="color:var(--personal)">Personal</span> + <span style="color:var(--maple)">Maple</span> tracked separately · combined ${fmtAUD(s.bal)}`;
+  } else if(budgetFilter==='personal'){
+    document.getElementById('tl-amount').innerHTML = `<span style="color:var(--personal)">${fmtAUD(s.balP)}</span>`;
+    document.getElementById('tl-sub').textContent = `+${i} days · Personal only`;
+  } else {
+    document.getElementById('tl-amount').innerHTML = `<span style="color:var(--maple)">${fmtAUD(s.balM)}</span>`;
+    document.getElementById('tl-sub').textContent = `+${i} days · Maple only`;
+  }
+  const pick = budgetFilter==='personal' ? (x=>x.balP) : budgetFilter==='maple' ? (x=>x.balM) : (x=>x.bal);
+  const low = series.reduce((a,b)=>pick(b)<pick(a)?b:a, series[0]);
+  document.getElementById('tl-low').textContent = fmtAUD(pick(low));
+  document.getElementById('tl-low-sub').textContent = `${fmtMD(low.d)} · ${low.i}d out`;
+  document.getElementById('tl-cc').textContent = fmtAUD(CC_TOTAL);
+  document.getElementById('tl-cc-sub').textContent = `due ${fmtMD(new Date(CC_NEXT_DUE))} · ${CC_ITEMS.length} items`;
+
+  // sidebar
+  document.getElementById('sb-date').textContent = fmtMD(s.d);
+  const paid = series.slice(0,i+1).flatMap(r=>r.events).filter(e=>e.budget!=='Income').reduce((t,e)=>t+e.amount,0);
+  const inc  = series.slice(0,i+1).flatMap(r=>r.events).filter(e=>e.budget==='Income').reduce((t,e)=>t+e.amount,0);
+  const varActual = VAR.reduce((t,v)=>t+v.actualToDate,0);
+  const varBudget = VAR.reduce((t,v)=>t+v.budget,0);
+  const sb = document.getElementById('sb-kv');
+  sb.innerHTML = `
+    <div class="kv"><span class="k">Projected balance</span><span class="v">${fmtAUD(s.bal)}</span></div>
+    <div class="kv"><span class="k"><span class="bucket-mini" style="background:var(--personal)"></span>Personal</span><span class="v">${fmtAUD(s.balP)}</span></div>
+    <div class="kv"><span class="k"><span class="bucket-mini" style="background:var(--maple)"></span>Maple</span><span class="v">${fmtAUD(s.balM)}</span></div>
+    <div class="kv"><span class="k">Income received</span><span class="v pos">+${fmtAUD(inc)}</span></div>
+    <div class="kv"><span class="k">Bills paid</span><span class="v">−${fmtAUD(paid)}</span></div>
+    <div class="kv"><span class="k">Pending on CC</span><span class="v" style="color:var(--cc)">${fmtAUD(CC_TOTAL)}</span></div>
+    <div class="kv"><span class="k">Variable spend MTD</span><span class="v ${varActual>varBudget?'neg':''}">${fmtAUD(varActual)} / ${fmtAUD(varBudget)}</span></div>
+  `;
+}
+range.addEventListener('input', update);
+
+document.querySelectorAll('[data-h]').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('[data-h]').forEach(x=>x.removeAttribute('aria-pressed'));
+  b.setAttribute('aria-pressed','true');
+  tlHorizon = +b.dataset.h;
+  update();
+}));
+document.querySelectorAll('[data-budget]').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('[data-budget]').forEach(x=>x.removeAttribute('aria-pressed'));
+  b.setAttribute('aria-pressed','true');
+  budgetFilter = b.dataset.budget;
+  refreshAll();
+}));
+
+/* Drag scrub on SVG */
+function svgToIndex(clientX){
+  const rect = svg.getBoundingClientRect();
+  const vb = svg.getAttribute('viewBox').split(' ');
+  const W=+vb[2];
+  const pad={l:64,r:18};
+  const x = (clientX - rect.left) / rect.width * W;
+  const series = SERIES.slice(0, tlHorizon+1);
+  const pct = Math.max(0, Math.min(1, (x-pad.l)/(W-pad.l-pad.r)));
+  return Math.round(pct*(series.length-1));
+}
+let dragging = false;
+svg.addEventListener('pointerdown', e=>{
+  dragging = true; svg.setPointerCapture(e.pointerId);
+  range.value = svgToIndex(e.clientX); update();
+});
+svg.addEventListener('pointermove', e=>{
+  if(!dragging) return;
+  range.value = svgToIndex(e.clientX); update();
+});
+svg.addEventListener('pointerup', ()=>{ dragging = false; });
+
+/* Ledger */
+function renderLedger(){
+  const tbody = document.querySelector('#ledger tbody');
+  let runBal = SERIES[0].bal;
+  const rows = [];
+  for(const s of SERIES.slice(1, 91)){
+    for(const e of s.events){
+      runBal += (e.budget==='Income' ? e.amount : -e.amount);
+      const amt = e.budget==='Income' ? '+'+fmtAUD(e.amount) : '−'+fmtAUD(e.amount);
+      const cls = e.budget==='Income' ? 'pos' : '';
+      if(e.isStmt){
+        rows.push(`<tr class="stmt-row-head">
+          <td><div class="ic-cell"><div class="icon stmt">◆</div><div><div class="bill-name">${fmtMD(s.d)}</div></div></div></td>
+          <td><div class="bill-name">CBA Mastercard statement</div><div class="bill-sub">${e.items.length} items aggregated</div></td>
+          <td><span class="tag cc">Credit</span></td>
+          <td style="color:var(--mute)">Credit card</td>
+          <td class="num" style="color:var(--cc);font-weight:600">${amt}</td>
+          <td class="num">${fmtAUD(runBal)}</td>
+          <td><span class="reco-pill">pending</span></td>
+        </tr>`);
+        for(const it of e.items){
+          rows.push(`<tr class="stmt-item">
+            <td>${it.date}</td>
+            <td>↳ ${it.bill}</td>
+            <td colspan="2" style="color:var(--mute)">from recurrence</td>
+            <td class="num">A$${it.amount.toFixed(2)}</td>
+            <td></td><td></td>
+          </tr>`);
+        }
+      } else {
+        const tagClass = e.bucket;
+        const bucketLbl = e.bucket==='maple'?'Maple':'Personal';
+        rows.push(`<tr>
+          <td><div class="ic-cell"><div class="icon ${e.budget==='Income'?'in':'out'}">${e.budget==='Income'?'▲':'▼'}</div><div><div class="bill-name">${fmtMD(s.d)}</div></div></div></td>
+          <td><div class="bill-name">${e.bill}</div><div class="bill-sub">${e.recur.n} ${e.recur.unit.toLowerCase()}</div></td>
+          <td><span class="tag ${tagClass}"><span class="sw"></span>${bucketLbl}</span></td>
+          <td style="color:var(--mute)">${e.payment}</td>
+          <td class="num ${cls}" style="${e.budget==='Income'?'color:var(--green);':''}font-weight:600">${amt}</td>
+          <td class="num">${fmtAUD(runBal)}</td>
+          <td>${e.budget==='Income' ? '<span class="reco-pill ok">scheduled</span>' : '<span class="reco-pill">pending</span>'}</td>
+        </tr>`);
+      }
+    }
+  }
+  tbody.innerHTML = rows.join('');
+  document.getElementById('ledger-sub').textContent = `${rows.length} rows · expanded from Notion recurrence`;
+}
+
+/* Notion preview */
+function renderNotion(){
+  const host = document.getElementById('notion-rows');
+  const rows = RAW.filter(r=>budgetFilter==='all'?true:r.bucket===budgetFilter);
+  host.innerHTML = rows.map(r=>`
+    <div class="notion-row">
+      <div class="name"><span class="ico">${r.ico}</span>${r.bill}</div>
+      <div class="num" style="color:${r.budget==='Income'?'var(--green)':'var(--ink)'};font-weight:500">${r.budget==='Income'?'+':'−'}A$${r.amount.toLocaleString()}</div>
+      <div class="date">${r.due}</div>
+      <div><span class="chip">${r.recur.n} ${r.recur.unit.replace(/\(s\)/,'')}</span></div>
+      <div><span class="chip">${r.payment}</span></div>
+      <div class="chips">${r.tags.map(t=>`<span class="chip mini">${t}</span>`).join('')}</div>
+    </div>`).join('');
+}
+
+/* Variable bars */
+function renderVar(){
+  const host = document.getElementById('var-bars');
+  host.innerHTML = VAR.map(v=>{
+    const over = v.actualToDate > v.budget;
+    const pct = Math.min(100, (v.actualToDate/v.budget)*100);
+    const cls = over ? 'over' : (pct < 60 ? 'good' : '');
+    const status = over
+      ? `<span class="v over">+${fmtAUD(v.actualToDate-v.budget)} over</span>`
+      : `<span class="v ${pct<60?'good':'ok'}">${fmtAUD(v.budget-v.actualToDate)} left</span>`;
+    return `<div class="var-row">
+      <div class="cat">${v.cat}<div class="sub">${v.sub}</div></div>
+      <div class="bbar"><div class="fill ${cls}" style="width:${pct}%"></div></div>
+      <div class="nums">${status}<div class="s">${fmtAUD(v.actualToDate)} of ${fmtAUD(v.budget)}</div></div>
+    </div>`;
+  }).join('');
+}
+
+/* CC statement expander */
+const stmtItems = document.getElementById('stmt-items');
+stmtItems.innerHTML = CC_ITEMS.map(i=>`<div class="stmt-row"><div class="d">${i.date}</div><div>${i.bill}</div><div class="n">A$${i.amt.toFixed(2)}</div></div>`).join('')
+  + `<div class="stmt-row" style="border-top:1px solid rgba(91,59,138,0.2);margin-top:4px;padding-top:8px;font-weight:600"><div></div><div>TOTAL</div><div class="n">A$${CC_TOTAL.toFixed(2)}</div></div>`;
+document.getElementById('stmt-toggle').onclick = ()=>{
+  const open = stmtItems.classList.toggle('open');
+  document.getElementById('stmt-toggle').textContent = open ? '▾ hide items' : `▸ show ${CC_ITEMS.length} items`;
+};
+document.getElementById('cc-amt').textContent = fmtAUD(CC_TOTAL);
+
+/* ———— Reconcile wizard ———— */
+const reco = document.getElementById('reco-modal');
+const recoBody = document.getElementById('reco-body');
+const recoFoot = document.getElementById('reco-foot');
+const recoSub = document.getElementById('reco-sub');
+let rState = { step:1, source:null, rows:[] };
+
+const MOCK_CC = [
+  {raw:"COLES WOODCROFT NSW",       amt:86.40,  date:"Apr 12"},
+  {raw:"DOORDASH *THAI 54",         amt:38.20,  date:"Apr 13"},
+  {raw:"AMAZON AU MARKETPLACE",     amt:22.99,  date:"Apr 15"},
+  {raw:"BP SERVICE STATION",        amt:72.00,  date:"Apr 16"},
+  {raw:"SPOTIFY P25XXXXX AU",       amt:16.00,  date:"Apr 17"},
+  {raw:"DOORDASH *SOUL BURGER",     amt:41.80,  date:"Apr 22"},
+  {raw:"GLOBIRD ENERGY INTERNET",   amt:79.00,  date:"Apr 28"},
+  {raw:"TELSTRA PHONE",             amt:45.00,  date:"May 02"},
+];
+const MOCK_DEBIT = [
+  {raw:"BWS WOODCROFT",          amt:54.30,  date:"Apr 18"},
+  {raw:"ALDI SEVEN HILLS",       amt:102.15, date:"Apr 19"},
+  {raw:"MORTGAGE PMT ANZ",       amt:2860.00,date:"Apr 20"},
+  {raw:"RENT TRANSFER",          amt:1800.00,date:"Apr 21"},
+];
+
+function guessMatch(row, source){
+  const hay = row.raw.toLowerCase();
+  let best = null, score = 0;
+  for(const r of RAW){
+    let s = 0;
+    const tokens = r.bill.toLowerCase().split(/[\s·()]+/).filter(t=>t.length>2);
+    for(const t of tokens) if(hay.includes(t)) s += 2;
+    if(Math.abs(r.amount - row.amt) < 0.5) s += 3;
+    else if(Math.abs(r.amount - row.amt)/r.amount < 0.1) s += 1;
+    if(s > score){ score = s; best = r; }
+  }
+  const cat = /coles|aldi|woolies|iga/.test(hay) ? "Groceries"
+            : /doordash|uber ?eats|menulog|thai|burger|cafe/.test(hay) ? "Dining out"
+            : /bp |caltex|shell|ampol|7-eleven/.test(hay) ? "Petrol"
+            : /amazon|ebay|kmart|bunnings|bws/.test(hay) ? "Ad-hoc"
+            : null;
+  const matched = score >= 4;
+  let bucket = 'personal';
+  if(source === 'debit'){
+    bucket = /mortgage|council|rent|globird/.test(hay) || (matched && best.bucket==='maple') ? 'maple' : 'personal';
+  }
+  return {
+    matched, confidence: score>=6?'high':score>=4?'med':'low',
+    bill: matched ? best.bill : null,
+    category: matched ? (best.budget==='subscription'?'Subscription':best.budget==='Income'?'Income':'Fixed bill') : cat,
+    bucket, ccLocked: source==='cc'
+  };
+}
+
+function setStep(n){
+  rState.step = n;
+  ['1','2','3'].forEach((s,ix)=>{
+    const el = document.querySelector(`.step[data-s="${s}"]`);
+    el.classList.remove('on','done');
+    if(ix+1 < n) el.classList.add('done');
+    else if(ix+1 === n) el.classList.add('on');
+  });
+  document.querySelectorAll('.step-bar').forEach((b,ix)=>b.classList.toggle('done', ix+1 < n));
+  renderReco();
+}
+
+function renderReco(){
+  if(rState.step===1){
+    recoSub.textContent = 'step 1 of 3 · what are you uploading?';
+    recoBody.innerHTML = `
+      <p style="margin:0 0 18px;color:var(--mute);font-size:13px">Picking the source lets me tag the rows correctly. <b style="color:var(--ink)">CC = Personal only.</b> Debit can be either.</p>
+      <div class="src-grid">
+        <button class="src-card cc" data-src="cc">
+          <div class="ic">◆</div>
+          <div class="t">CBA Mastercard</div>
+          <div class="d">A statement PDF, CSV, or screenshot from NetBank.<br><b>Rows → Credit · Personal.</b></div>
+          <div class="h">Matches Spotify, phone, internet, etc. Bundles to statement due.</div>
+        </button>
+        <button class="src-card debit" data-src="debit">
+          <div class="ic">▣</div>
+          <div class="t">Bank transaction feed</div>
+          <div class="d">A screenshot or CSV of your everyday / debit account.<br><b>Rows → Debit · bucket auto-guessed.</b></div>
+          <div class="h">Matches rent, mortgage, direct debits.</div>
+        </button>
+        <button class="src-card mixed" data-src="mixed">
+          <div class="ic">?</div>
+          <div class="t">Mixed / other</div>
+          <div class="d">DoorDash email, a receipt, anything else.<br><b>I'll ask per row.</b></div>
+          <div class="h">Best for one-offs.</div>
+        </button>
+      </div>`;
+    recoBody.querySelectorAll('.src-card').forEach(c=>c.onclick=()=>{ rState.source = c.dataset.src; setStep(2); });
+    recoFoot.innerHTML = `<div style="color:var(--mute);font-size:12px">No file leaves your session until you click commit.</div><button class="btn ghost" id="r-cancel">Cancel</button>`;
+    document.getElementById('r-cancel').onclick = ()=>reco.classList.remove('open');
+  }
+  else if(rState.step===2){
+    const sLabel = rState.source==='cc'?'CBA Mastercard statement':rState.source==='debit'?'bank transaction feed':'mixed file';
+    recoSub.textContent = `step 2 of 3 · upload your ${sLabel}`;
+    recoBody.innerHTML = `
+      <div class="drop" id="drop-x" tabindex="0">
+        <div class="dic">⎘</div>
+        <div class="dt">Drop your ${sLabel} here</div>
+        <div class="ds">${rState.source==='cc'?'A CBA PDF works best; screenshot of transactions is fine too.':'Screenshot, CSV, or paste rows directly.'}</div>
+        <div class="dh">supports PNG · JPG · PDF · CSV · Cmd+V</div>
+      </div>
+      <div style="margin-top:18px;text-align:center">
+        <button class="btn" id="r-sim">Simulate parse →</button>
+        <div style="color:var(--mute);font-size:11.5px;margin-top:6px">(mock: uses canned ${rState.source==='debit'?'debit':'CC'} rows for preview)</div>
+      </div>`;
+    document.getElementById('r-sim').onclick = document.getElementById('drop-x').onclick = ()=>{
+      const raw = rState.source==='debit' ? MOCK_DEBIT : MOCK_CC;
+      rState.rows = raw.map(r=>({...r, ...guessMatch(r, rState.source==='mixed'?'cc':rState.source), commit:true}));
+      setStep(3);
+    };
+    recoFoot.innerHTML = `<button class="btn ghost" id="r-back">← Change source</button><button class="btn" id="r-next-disabled" disabled style="opacity:.4">Upload a file to continue</button>`;
+    document.getElementById('r-back').onclick = ()=>setStep(1);
+  }
+  else if(rState.step===3){
+    const matched = rState.rows.filter(r=>r.matched).length;
+    const newN = rState.rows.length - matched;
+    const sLabel = rState.source==='cc'?'CBA Mastercard':rState.source==='debit'?'Bank feed':'Mixed';
+    recoSub.textContent = `step 3 of 3 · review ${rState.rows.length} rows · ${matched} auto-matched · ${newN} new`;
+    const locked = rState.source==='cc';
+    recoBody.innerHTML = `
+      <div class="rev-info">
+        <span class="pill ${rState.source==='cc'?'cc':''}">Source · ${sLabel}</span>
+        <span class="pill">${matched}/${rState.rows.length} matched to forecast</span>
+        ${locked ? '<span class="pill lock">🔒 Bucket locked to Personal</span>' : '<span class="pill">Bucket auto-guessed · editable</span>'}
+        <span style="color:var(--mute);font-size:11.5px;margin-left:auto">Uncheck to skip · click bucket to flip (where unlocked)</span>
+      </div>
+      <div class="rev-table">
+        <div class="rev-thead"><div></div><div>Transaction</div><div class="num">Amount</div><div>Match / category</div><div>Bucket</div><div>Conf</div></div>
+        ${rState.rows.map((r,ix)=>`
+          <div class="rev-row ${r.matched?'':'um'}">
+            <div><input type="checkbox" class="r-chk" data-ix="${ix}" ${r.commit?'checked':''}></div>
+            <div class="raw"><div class="r">${r.raw}</div><div class="d">${r.date}</div></div>
+            <div class="num">A$${r.amt.toFixed(2)}</div>
+            <div>${r.matched
+                ? `<span class="mtag ok">✓ ${r.bill}</span>`
+                : `<span class="mtag q">? ${r.category||'Pick category'}</span>`}
+            </div>
+            <div><span class="bkt-sel ${r.bucket} ${locked?'locked':''}" data-ix="${ix}"><span class="sw"></span>${r.bucket==='maple'?'Maple':'Personal'}${locked?' 🔒':''}</span></div>
+            <div><span class="conf ${r.confidence}">${r.confidence}</span></div>
+          </div>`).join('')}
+      </div>`;
+    recoBody.querySelectorAll('.r-chk').forEach(cb=>cb.onchange=e=>{
+      rState.rows[+e.target.dataset.ix].commit = e.target.checked;
+      updateCommitBtn();
+    });
+    if(!locked){
+      recoBody.querySelectorAll('.bkt-sel:not(.locked)').forEach(el=>el.onclick=()=>{
+        const r = rState.rows[+el.dataset.ix];
+        r.bucket = r.bucket==='personal' ? 'maple' : 'personal';
+        renderReco();
+      });
+    }
+    recoFoot.innerHTML = `<button class="btn ghost" id="r-back3">← Back</button>
+      <div style="display:flex;gap:8px;align-items:center">
+        <span style="color:var(--mute);font-size:12px"><b id="r-count">${rState.rows.filter(r=>r.commit).length}</b> rows ready</span>
+        <button class="btn" id="r-commit">Commit →</button>
+      </div>`;
+    document.getElementById('r-back3').onclick = ()=>setStep(2);
+    document.getElementById('r-commit').onclick = commitReco;
+  }
+}
+function updateCommitBtn(){
+  const c = rState.rows.filter(r=>r.commit).length;
+  const el = document.getElementById('r-count');
+  if(el) el.textContent = c;
+}
+function commitReco(){
+  const delta = {};
+  for(const r of rState.rows){
+    if(!r.commit) continue;
+    if(!r.matched && r.category){
+      delta[r.category] = (delta[r.category]||0) + r.amt;
+    }
+  }
+  for(const v of VAR){
+    const key = v.cat;
+    if(delta[key]) v.actualToDate = Math.round(v.actualToDate + delta[key]);
+    // heuristic: "Dining out" vs "Dining" etc.
+    for(const k in delta){
+      if(k!==key && v.cat.toLowerCase().startsWith(k.toLowerCase().split(' ')[0])){
+        v.actualToDate = Math.round(v.actualToDate + delta[k]);
+        delete delta[k];
+      }
+    }
+  }
+  reco.classList.remove('open');
+  refreshAll();
+  // toast
+  const t = document.createElement('div');
+  t.style.cssText='position:fixed;bottom:28px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--paper);padding:12px 18px;border-radius:10px;font-size:13px;box-shadow:var(--shadow);z-index:200';
+  t.innerHTML = `✓ Committed ${rState.rows.filter(r=>r.commit).length} rows · variable envelopes updated`;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(), 3200);
+}
+
+function openReco(){ rState={step:1,source:null,rows:[]}; setStep(1); reco.classList.add('open'); }
+document.getElementById('open-reco').onclick = openReco;
+document.getElementById('stmt-import').onclick = ()=>{ openReco(); rState.source='cc'; setStep(2); };
+document.getElementById('stmt-paste').onclick = ()=>{ openReco(); rState.source='cc'; setStep(2); };
+document.getElementById('drop1').onclick = openReco;
+document.getElementById('reco-close').onclick = ()=>reco.classList.remove('open');
+reco.addEventListener('click',e=>{ if(e.target===reco) reco.classList.remove('open'); });
+
+/* ———— Refresh ———— */
+function refreshAll(){
+  rebuildSeries(180);
+  update();
+  renderLedger();
+  renderNotion();
+  renderVar();
+}
+refreshAll();
+// initial scrubber position
+range.value = 57; update();
+
+/* ———— Tweaks ———— */
+const TWEAKS = /*EDITMODE-BEGIN*/{
+  "startPersonal": 7400,
+  "startMaple": 800,
+  "ccStmtDueDay": 25,
+  "groceriesBudget": 900,
+  "diningBudget": 320,
+  "lowBalanceAlert": 3500
+}/*EDITMODE-END*/;
+let twEl = null;
+function buildTweaks(){
+  twEl = document.createElement('div');
+  twEl.className = 'tweaks';
+  twEl.innerHTML = `
+    <div class="thd"><b>Tweaks</b><button class="x" id="tw-x">×</button></div>
+    ${sl('startPersonal','Personal start',0,30000,100)}
+    ${sl('startMaple','Maple start',0,30000,100)}
+    ${sl('groceriesBudget','Groceries budget',0,2000,20)}
+    ${sl('diningBudget','Dining budget',0,1000,20)}
+    ${sl('ccStmtDueDay','CC stmt due day',1,28,1)}
+    ${sl('lowBalanceAlert','Low-balance alert',0,10000,100)}
+  `;
+  document.body.appendChild(twEl);
+  twEl.querySelector('#tw-x').onclick = ()=>{ twEl.style.display='none'; };
+  for(const k of Object.keys(TWEAKS)){
+    const inp = twEl.querySelector(`input[data-k="${k}"]`);
+    if(!inp) continue;
+    inp.oninput = e=>{
+      const v = +e.target.value;
+      TWEAKS[k] = v;
+      twEl.querySelector(`b[data-kv="${k}"]`).textContent = v;
+      applyTweaks();
+      window.parent.postMessage({type:'__edit_mode_set_keys', edits:{[k]:v}}, '*');
+    };
+  }
+}
+function sl(k, label, min, max, step){
+  return `<label>
+    <div class="lb"><span>${label}</span><b data-kv="${k}">${TWEAKS[k]}</b></div>
+    <input type="range" data-k="${k}" min="${min}" max="${max}" step="${step}" value="${TWEAKS[k]}">
+  </label>`;
+}
+function applyTweaks(){
+  START.personal = TWEAKS.startPersonal;
+  START.maple    = TWEAKS.startMaple;
+  VAR[0].budget  = TWEAKS.groceriesBudget;
+  VAR[1].budget  = TWEAKS.diningBudget;
+  CC_CYCLE.due   = TWEAKS.ccStmtDueDay;
+  refreshAll();
+}
+window.addEventListener('message', e=>{
+  if(!e.data) return;
+  if(e.data.type==='__activate_edit_mode'){ twEl ? (twEl.style.display='block') : buildTweaks(); }
+  if(e.data.type==='__deactivate_edit_mode' && twEl){ twEl.style.display='none'; }
+});
+window.parent.postMessage({type:'__edit_mode_available'}, '*');
+</script>
+</body>
+</html>
