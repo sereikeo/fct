@@ -94,8 +94,7 @@ button{font-family:inherit}
 
 /* Chart card */
 .curve-card{padding:24px 26px 16px}
-.curve-header{display:flex;justify-content:flex-end;margin-bottom:16px}
-.curve-top{display:flex;gap:36px;flex-wrap:wrap;align-items:flex-end;margin-bottom:8px}
+.curve-top{display:flex;gap:36px;align-items:flex-end;justify-content:space-between;margin-bottom:8px}
 .stat{display:flex;flex-direction:column;gap:6px;min-width:0}
 .stat .lbl{font-size:11px;color:var(--mute);text-transform:uppercase;letter-spacing:0.08em}
 .stat .val{font-family:'Instrument Serif',serif;font-size:48px;line-height:1;letter-spacing:-0.02em}
