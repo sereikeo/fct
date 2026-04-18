@@ -116,9 +116,8 @@ button{font-family:inherit}
 .scrub-readout b{color:var(--paper)}
 .scrub-readout .d{color:rgba(243,239,230,0.6)}
 
-.controls{display:flex;align-items:center;gap:14px;padding:14px 0 4px;border-top:1px dashed var(--line);margin-top:14px}
-.controls .range{flex:1;display:flex;align-items:center;gap:12px}
-.controls input[type=range]{flex:1;-webkit-appearance:none;appearance:none;background:transparent;height:28px}
+.controls{display:block;padding:14px calc(1.8% - 9px) 4px calc(6.4% - 9px);border-top:1px dashed var(--line);margin-top:14px}
+.controls input[type=range]{display:block;width:100%;margin:0;-webkit-appearance:none;appearance:none;background:transparent;height:28px}
 .controls input[type=range]::-webkit-slider-runnable-track{height:3px;background:var(--paper-3);border-radius:2px}
 .controls input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:18px;height:26px;background:var(--paper);border:1.5px solid var(--ink);margin-top:-12px;border-radius:6px;cursor:ew-resize;box-shadow:var(--shadow)}
 .controls input[type=range]::-moz-range-track{height:3px;background:var(--paper-3);border-radius:2px}
