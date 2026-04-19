@@ -62,14 +62,21 @@ jobs:
           cd /volume1/docker/fct
           docker-compose up -d --force-recreate --no-deps backend
 
-      - name: Redeploy frontend (repopulate dist volume)
+      - name: Redeploy frontend (wipe dist volume, repopulate from fresh image)
         run: |
           cd /volume1/docker/fct
-          docker-compose stop frontend
-          docker-compose rm -f frontend
-          docker volume rm fct_frontend_dist || true
+          # Both frontend and caddy mount fct_frontend_dist. `docker volume rm`
+          # rejects any volume attached to a container (even a stopped one), so
+          # both containers must be removed before the wipe.
+          docker-compose rm -sf frontend caddy
+          # Wipe the volume. Docker only copies image contents into a named
+          # volume when it is empty; without this, stale dist files persist
+          # across deploys regardless of how fresh the image is.
+          docker volume rm fct_frontend_dist
+          # Bring frontend up first so it populates the fresh (empty) volume
+          # with the new build, then start caddy so it mounts the new files.
           docker-compose up -d --no-deps frontend
-          docker-compose restart caddy
+          docker-compose up -d --no-deps caddy
 
       - name: Health check
         run: |
