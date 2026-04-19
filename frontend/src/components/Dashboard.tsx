@@ -128,43 +128,6 @@ function OnThisDateCard({ entries, scrubIndex }: { entries: CashFlowEntry[]; scr
   );
 }
 
-// ——— Alerts card ———
-function AlertsCard({ entries }: { entries: CashFlowEntry[] }) {
-  const LOW_THRESHOLD = 3500;
-  const lowPoint = entries.length > 0
-    ? entries.reduce((min, e) => Math.min(min, e.balance), entries[0].balance)
-    : null;
-  const lowEntry = entries.find(e => e.balance === lowPoint);
-
-  return (
-    <div className="card">
-      <div className="hd"><h3>Alerts</h3></div>
-      <div className="bd">
-        {lowPoint !== null && lowPoint < LOW_THRESHOLD ? (
-          <div className="alert warn">
-            <div className="ic">⚠</div>
-            <div>
-              <div className="t">
-                Balance dips to {fmtAUD(lowPoint)} on{' '}
-                {lowEntry ? fmtMD(new Date(lowEntry.date + 'T00:00:00')) : '—'}
-              </div>
-              <div className="s">below your {fmtAUD(LOW_THRESHOLD)} alert threshold.</div>
-            </div>
-          </div>
-        ) : (
-          <div className="alert" style={{ background: 'rgba(46,106,58,0.04)', borderColor: 'rgba(46,106,58,0.2)' }}>
-            <div className="ic" style={{ background: 'var(--green)', color: 'white' }}>✓</div>
-            <div>
-              <div className="t">Balance stays above {fmtAUD(LOW_THRESHOLD)}</div>
-              <div className="s">No low-balance alerts in this forecast window.</div>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 // ——— Upcoming ledger table ———
 function LedgerCard({ entries, bucketFilter }: { entries: CashFlowEntry[]; bucketFilter: BucketFilter }) {
   const rows = useMemo(() => {
@@ -327,40 +290,42 @@ export default function Dashboard({ dateRange, onDateRangeChange }: Props) {
     <>
       {/* ——— Top bar ——— */}
       <header className="bar">
-        <div className="logo">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M3 17 L9 11 L13 15 L21 7"/>
-            <circle cx="9" cy="11" r="1.6" fill="currentColor"/>
-            <circle cx="13" cy="15" r="1.6" fill="currentColor"/>
-          </svg>
+        <div className="bar-inner">
+          <div className="logo">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 17 L9 11 L13 15 L21 7"/>
+              <circle cx="9" cy="11" r="1.6" fill="currentColor"/>
+              <circle cx="13" cy="15" r="1.6" fill="currentColor"/>
+            </svg>
+          </div>
+          <div className="brand">
+            <b>Future Cash Timeline</b>
+            <small>connected to Notion · Budgets DB</small>
+          </div>
+          <div className="seg" role="group" aria-label="Budget bucket">
+            {(['all', 'personal', 'maple'] as BucketFilter[]).map((b) => (
+              <button
+                key={b}
+                aria-pressed={bucketFilter === b ? 'true' : 'false'}
+                onClick={() => setBucketFilter(b)}
+              >
+                <span
+                  className="sw"
+                  style={{ background: b === 'all' ? 'var(--ink)' : b === 'personal' ? 'var(--personal)' : 'var(--maple)' }}
+                />
+                {b === 'all' ? 'All' : b === 'personal' ? 'Personal' : 'Maple'}
+              </button>
+            ))}
+          </div>
+          <SyncStatus />
+          <div className="spacer" />
+          <button className="btn ghost">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/>
+            </svg>
+            Reconcile
+          </button>
         </div>
-        <div className="brand">
-          <b>Future Cash Timeline</b>
-          <small>connected to Notion · Budgets DB</small>
-        </div>
-        <div className="seg" role="group" aria-label="Budget bucket">
-          {(['all', 'personal', 'maple'] as BucketFilter[]).map((b) => (
-            <button
-              key={b}
-              aria-pressed={bucketFilter === b ? 'true' : 'false'}
-              onClick={() => setBucketFilter(b)}
-            >
-              <span
-                className="sw"
-                style={{ background: b === 'all' ? 'var(--ink)' : b === 'personal' ? 'var(--personal)' : 'var(--maple)' }}
-              />
-              {b === 'all' ? 'All' : b === 'personal' ? 'Personal' : 'Maple'}
-            </button>
-          ))}
-        </div>
-        <SyncStatus />
-        <div className="spacer" />
-        <button className="btn ghost">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/>
-          </svg>
-          Reconcile
-        </button>
       </header>
 
       {/* ——— Main page ——— */}
@@ -406,7 +371,6 @@ export default function Dashboard({ dateRange, onDateRangeChange }: Props) {
           <div className="stack">
             <OnThisDateCard entries={entries} scrubIndex={scrubIndex} />
             <CCStatementCard entries={entries} />
-            <AlertsCard entries={entries} />
           </div>
         </section>
 

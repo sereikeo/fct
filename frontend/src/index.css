@@ -36,10 +36,12 @@ button{font-family:inherit}
 
 /* Top bar */
 .bar{
-  display:flex;align-items:center;gap:14px;padding:14px 28px;
   background:rgba(243,239,230,0.82);backdrop-filter:blur(14px);
-  border-bottom:1px solid var(--line);position:sticky;top:0;z-index:30;
-  max-width:1440px;margin:0 auto
+  border-bottom:1px solid var(--line);position:sticky;top:0;z-index:30
+}
+.bar-inner{
+  max-width:1440px;margin:0 auto;padding:14px 28px;
+  display:flex;align-items:center;gap:14px
 }
 .logo{width:30px;height:30px;border-radius:9px;background:var(--ink);color:var(--paper);display:grid;place-items:center;position:relative;overflow:hidden;flex-shrink:0}
 .logo svg{width:18px;height:18px}
