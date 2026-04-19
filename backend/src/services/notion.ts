@@ -72,14 +72,22 @@ function mapPageToRow(page: PageObjectResponse): Record<string, unknown> | null 
     : 'expense';
 
   // Recur Unit select: 'Month(s)', 'Week(s)', 'Year(s)', 'Day(s)'
-  // Map to the engine's Frequency enum
+  // Recur Interval: integer multiplier; interval=2 + unit=Week(s) means every
+  // two weeks, i.e. fortnightly. Map the pair to the engine's Frequency enum.
   const recurUnit = extractSelect(p['Recur Unit']) ?? '';
-  const frequency =
-    recurUnit.startsWith('Week') ? 'weekly'
-    : recurUnit.startsWith('Fortnightly') || recurUnit.startsWith('Fortnight') ? 'fortnightly'
-    : recurUnit.startsWith('Year') ? 'annual'
-    : recurUnit.startsWith('Day') ? 'weekly'   // fallback — treat daily as weekly
-    : 'monthly';                                 // Month(s) or unknown
+  const recurInterval = extractNumber(p['Recur Interval']) || 1;
+  let frequency: 'weekly' | 'fortnightly' | 'monthly' | 'annual';
+  if (recurUnit.startsWith('Week')) {
+    frequency = recurInterval === 2 ? 'fortnightly' : 'weekly';
+  } else if (recurUnit.startsWith('Fortnight')) {
+    frequency = 'fortnightly';
+  } else if (recurUnit.startsWith('Year')) {
+    frequency = 'annual';
+  } else if (recurUnit.startsWith('Day')) {
+    frequency = 'weekly'; // fallback — treat daily as weekly
+  } else {
+    frequency = 'monthly'; // Month(s) or unknown
+  }
 
   return {
     notion_page_id: page.id,

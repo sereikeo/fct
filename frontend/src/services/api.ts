@@ -73,7 +73,7 @@ export interface ReconciliationRecord {
 export interface HealthResponse {
   status: string;
   notionSyncedAt: string | null;
-  syncError?: string;
+  error?: string;
 }
 
 export const QUERY_KEYS = {

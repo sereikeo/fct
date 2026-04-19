@@ -22,7 +22,7 @@ export default function SyncStatus() {
 
   const stale = !data?.notionSyncedAt ||
     Date.now() - new Date(data.notionSyncedAt).getTime() > 10 * 60 * 1000;
-  const hasError = !!data?.syncError;
+  const hasError = !!data?.error;
 
   async function handleSync() {
     setSyncing(true);
@@ -41,7 +41,7 @@ export default function SyncStatus() {
       <div className="sync">
         <span className={dotClass} />
         <span>Notion · synced {relativeTime(data?.notionSyncedAt ?? null)}</span>
-        {hasError && <span title={data!.syncError} style={{ color: 'var(--accent)', marginLeft: 4 }}>⚠</span>}
+        {hasError && <span title={data!.error} style={{ color: 'var(--accent)', marginLeft: 4 }}>⚠</span>}
       </div>
       <button
         className="btn ghost sync-now"
