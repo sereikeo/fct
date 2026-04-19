@@ -239,3 +239,26 @@ button{font-family:inherit}
   .row2{grid-template-columns:1fr}
   .hero{grid-template-columns:1fr}
 }
+
+/* Header — tablet: tighten spacing but keep single row */
+@media(max-width:900px){
+  .bar-inner{padding:12px 20px;gap:10px;flex-wrap:wrap}
+  .bar .spacer{display:none}
+  .bar-inner .reconcile-btn{margin-left:auto;order:2}
+  .bar-inner::after{content:"";order:3;flex-basis:100%;height:0}
+  .bar-inner .seg{order:4}
+  .bar-inner .sync{order:5;margin-left:auto}
+  .bar-inner > .btn.ghost.sync-now{order:6}
+}
+
+/* Header — mobile: compact segments + hide subtitle */
+@media(max-width:520px){
+  .bar-inner{padding:10px 16px;gap:8px;row-gap:10px}
+  .brand small{display:none}
+  .brand b{font-size:13.5px}
+  .seg{flex-wrap:wrap}
+  .seg button{padding:5px 10px;font-size:12px;gap:5px}
+  .sync{font-size:11px;padding:5px 10px}
+  .bar-inner .reconcile-btn{padding:7px 10px;font-size:12.5px}
+  .bar-inner > .btn.ghost.sync-now{font-size:11.5px !important;padding:5px 10px !important}
+}

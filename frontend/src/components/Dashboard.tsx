@@ -319,7 +319,7 @@ export default function Dashboard({ dateRange, onDateRangeChange }: Props) {
           </div>
           <SyncStatus />
           <div className="spacer" />
-          <button className="btn ghost">
+          <button className="btn ghost reconcile-btn">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/>
             </svg>

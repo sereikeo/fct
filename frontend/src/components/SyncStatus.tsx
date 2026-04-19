@@ -44,7 +44,7 @@ export default function SyncStatus() {
         {hasError && <span title={data!.syncError} style={{ color: 'var(--accent)', marginLeft: 4 }}>⚠</span>}
       </div>
       <button
-        className="btn ghost"
+        className="btn ghost sync-now"
         onClick={handleSync}
         disabled={syncing}
         style={{ fontSize: 12, padding: '6px 12px' }}
