@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { getCashflow, getEnvelopes, QUERY_KEYS, CashFlowEntry, LineItem, EnvelopeWithOverride } from '../services/api';
+import { getCashflow, getEnvelopes, QUERY_KEYS, CashFlowEntry, LineItem, EnvelopeWithOverride, OverdueItem, OverdueTotals } from '../services/api';
 import CashFlowChart from './CashFlowChart';
 import SyncStatus from './SyncStatus';
 import EnvelopePanel from './EnvelopePanel';
@@ -132,7 +132,17 @@ function OnThisDateCard({ entries, scrubIndex, bucketFilter }: { entries: CashFl
 }
 
 // ——— Upcoming ledger table ———
-function LedgerCard({ entries, bucketFilter }: { entries: CashFlowEntry[]; bucketFilter: BucketFilter }) {
+function LedgerCard({
+  entries,
+  overdueItems,
+  overdueTotals,
+  bucketFilter,
+}: {
+  entries: CashFlowEntry[];
+  overdueItems: OverdueItem[];
+  overdueTotals: OverdueTotals;
+  bucketFilter: BucketFilter;
+}) {
   const rows = useMemo(() => {
     const out: { entry: CashFlowEntry; item: LineItem }[] = [];
     for (const entry of entries.slice(0, 91)) {
@@ -145,12 +155,42 @@ function LedgerCard({ entries, bucketFilter }: { entries: CashFlowEntry[]; bucke
     return out;
   }, [entries, bucketFilter]);
 
+  const overdueRows = useMemo(() => {
+    const filtered = overdueItems.filter(o => bucketFilter === 'all' || o.bucket === bucketFilter);
+    // Sort by due_date ascending (earliest = most overdue first)
+    return filtered.slice().sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+  }, [overdueItems, bucketFilter]);
+
+  const showPersonalTotal = overdueTotals.personal > 0 && bucketFilter !== 'maple';
+  const showMapleTotal    = overdueTotals.maple    > 0 && bucketFilter !== 'personal';
+  const showSummary       = overdueRows.length > 0 && (showPersonalTotal || showMapleTotal);
+
   return (
     <div className="card flush">
       <div className="hd" style={{ padding: '16px 20px' }}>
         <h3>Upcoming · next 90 days</h3>
-        <span className="sub">{rows.length} rows · expanded from recurrence</span>
+        <span className="sub">
+          {overdueRows.length > 0 ? `${overdueRows.length} overdue · ` : ''}
+          {rows.length} rows · expanded from recurrence
+        </span>
       </div>
+      {showSummary && (
+        <div className="overdue-summary">
+          <span className="lbl">Overdue</span>
+          {showPersonalTotal && (
+            <span className="tot">
+              <span className="sw" style={{ background: 'var(--personal)' }} />
+              Personal <b className="mono">−A${overdueTotals.personal.toFixed(2)}</b>
+            </span>
+          )}
+          {showMapleTotal && (
+            <span className="tot">
+              <span className="sw" style={{ background: 'var(--maple)' }} />
+              Maple <b className="mono">−A${overdueTotals.maple.toFixed(2)}</b>
+            </span>
+          )}
+        </div>
+      )}
       <div style={{ overflow: 'auto', maxHeight: 560 }}>
         <table className="ledger">
           <thead>
@@ -160,6 +200,41 @@ function LedgerCard({ entries, bucketFilter }: { entries: CashFlowEntry[]; bucke
             </tr>
           </thead>
           <tbody>
+            {overdueRows.map((o) => {
+              const due = new Date(o.dueDate + 'T00:00:00');
+              return (
+                <tr key={`overdue-${o.budgetItemId}`} className="overdue">
+                  <td>
+                    <div className="ic-cell">
+                      <div className="icon overdue">!</div>
+                      <div>
+                        <div className="bill-name">
+                          {due.toLocaleDateString('en-AU', { month: 'short', day: '2-digit' })}
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+                  <td>
+                    <div className="bill-name">{o.name}</div>
+                  </td>
+                  <td>
+                    <span className={`tag ${o.bucket}`}>
+                      <span className="sw" style={{ background: o.bucket === 'maple' ? 'var(--maple)' : 'var(--personal)' }} />
+                      {o.bucket === 'maple' ? 'Maple' : 'Personal'}
+                    </span>
+                  </td>
+                  <td style={{ color: 'var(--mute)' }}>—</td>
+                  <td className="num" style={{ color: 'var(--accent)', fontWeight: 600 }}>
+                    −A${o.forecastAmount.toFixed(2)}
+                  </td>
+                  <td>
+                    <span className="reco-pill overdue">
+                      overdue · {o.daysOverdue}d
+                    </span>
+                  </td>
+                </tr>
+              );
+            })}
             {rows.map(({ entry, item }, i) => {
               const isIncome = item.type === 'income';
               const isStmt = item.isCC;
@@ -273,6 +348,12 @@ export default function Dashboard({ dateRange, onDateRangeChange }: Props) {
   });
 
   const entries = useMemo<CashFlowEntry[]>(() => data?.entries ?? [], [data]);
+  const adjustedEntries = useMemo<CashFlowEntry[]>(() => data?.adjustedEntries ?? [], [data]);
+  const overdueItems = useMemo<OverdueItem[]>(() => data?.overdueItems ?? [], [data]);
+  const overdueTotals = useMemo<OverdueTotals>(
+    () => data?.overdueTotals ?? { personal: 0, maple: 0 },
+    [data]
+  );
   const envelopes = useMemo<EnvelopeWithOverride[]>(() => envData?.envelopes ?? [], [envData]);
 
   const scrubIndex = useMemo(() => {
@@ -364,6 +445,8 @@ export default function Dashboard({ dateRange, onDateRangeChange }: Props) {
           ) : (
             <CashFlowChart
               entries={entries}
+              adjustedEntries={adjustedEntries}
+              hasOverdue={overdueItems.length > 0}
               scrubIndex={scrubIndex}
               onScrubChange={handleScrubChange}
               horizon={horizon}
@@ -390,7 +473,12 @@ export default function Dashboard({ dateRange, onDateRangeChange }: Props) {
 
         {/* Row 2: Ledger | Notion preview */}
         <section className="row2">
-          <LedgerCard entries={entries} bucketFilter={bucketFilter} />
+          <LedgerCard
+            entries={entries}
+            overdueItems={overdueItems}
+            overdueTotals={overdueTotals}
+            bucketFilter={bucketFilter}
+          />
           <NotionCard envelopes={envelopes} bucketFilter={bucketFilter} />
         </section>
 

@@ -100,6 +100,9 @@ button{font-family:inherit}
 .curve-top{display:flex;gap:36px;flex-wrap:wrap;align-items:flex-end;margin-bottom:8px}
 .chart-head{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:8px;flex-wrap:wrap}
 .chart-head .lbl{font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:var(--mute);font-weight:600}
+.toggle-adj{display:inline-flex;align-items:center;gap:7px;padding:5px 11px;border-radius:8px;border:1px solid var(--line);background:var(--paper-2);color:var(--ink-2);font-size:12.5px;font-weight:500;cursor:pointer;margin-left:auto}
+.toggle-adj .sw{width:18px;height:2px;background:repeating-linear-gradient(90deg,var(--accent) 0 2px,transparent 2px 5px);border-radius:1px}
+.toggle-adj.on{background:rgba(199,68,43,0.08);border-color:var(--accent);color:var(--accent)}
 .stat{display:flex;flex-direction:column;gap:6px;min-width:0}
 .stat .lbl{font-size:11px;color:var(--mute);text-transform:uppercase;letter-spacing:0.08em}
 .stat .val{font-family:'Instrument Serif',serif;font-size:48px;line-height:1;letter-spacing:-0.02em}
@@ -191,8 +194,18 @@ button{font-family:inherit}
 .ledger tr.stmt-row-head td:first-child{border-left:2px solid var(--cc)}
 .ledger tr.stmt-item td{background:rgba(91,59,138,0.02);font-size:12px;color:var(--ink-2)}
 .ledger tr.stmt-item td:first-child{border-left:2px solid var(--cc);padding-left:54px}
+.ledger tr.overdue td{background:rgba(199,68,43,0.08)}
+.ledger tr.overdue:hover td{background:rgba(199,68,43,0.14)}
+.ledger tr.overdue td:first-child{border-left:2px solid var(--accent)}
+.ledger .icon.overdue{background:var(--accent);color:#fff;font-weight:700}
 .reco-pill{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:500;border:1px dashed var(--line);color:var(--mute)}
 .reco-pill.ok{border-style:solid;border-color:var(--green);color:var(--green);background:rgba(46,106,58,0.06)}
+.reco-pill.overdue{border-style:solid;border-color:var(--accent);color:var(--accent);background:rgba(199,68,43,0.08)}
+.overdue-summary{display:flex;align-items:center;gap:14px;padding:10px 20px;background:rgba(199,68,43,0.06);border-bottom:1px solid rgba(199,68,43,0.2);font-size:12.5px}
+.overdue-summary .lbl{font-size:10.5px;letter-spacing:0.1em;text-transform:uppercase;color:var(--accent);font-weight:700}
+.overdue-summary .tot{display:inline-flex;align-items:center;gap:6px;color:var(--ink-2)}
+.overdue-summary .tot .sw{width:7px;height:7px;border-radius:50%}
+.overdue-summary .tot b{color:var(--accent);font-weight:600}
 
 /* Variable bars */
 .var-row{display:grid;grid-template-columns:180px 1fr 160px;gap:16px;align-items:center;padding:12px 0;border-bottom:1px solid var(--line-2)}

@@ -28,6 +28,7 @@ const fmtLong = (d: Date) =>
 
 function buildChartSVG(
   series: ChartSeries[],
+  adjustedSeries: ChartSeries[] | null,
   scrubIndex: number,
   bucketFilter: string
 ): { svgHTML: string; readout: ReadoutState | null } {
@@ -50,6 +51,9 @@ function buildChartSVG(
 
   const allVals: number[] = [];
   for (const sd of seriesDefs) for (const s of series) allVals.push(sd.getVal(s));
+  if (adjustedSeries) {
+    for (const sd of seriesDefs) for (const s of adjustedSeries) allVals.push(sd.getVal(s));
+  }
   const vMax = Math.max(...allVals) * 1.12;
   const vMin = Math.min(0, Math.min(...allVals) * 0.88);
   const ys = (v: number) => pad.t + (1 - (v - vMin) / (vMax - vMin)) * (H - pad.t - pad.b);
@@ -115,6 +119,19 @@ function buildChartSVG(
 
   g += `<text x="${xs(0) + 14}" y="${pad.t + 12}" font-size="10.5" fill="#131211" font-family="Inter,sans-serif" font-weight="600">TODAY · actual ends</text>`;
 
+  // "If paid today" — adjusted balance line(s)
+  if (adjustedSeries && adjustedSeries.length === series.length) {
+    const adjColor = '#c7442b';
+    seriesDefs.forEach((sd) => {
+      let line = `M ${xs(0)} ${ys(sd.getVal(adjustedSeries[0]))} `;
+      for (let i = 1; i < adjustedSeries.length; i++) {
+        line += `L ${xs(i)} ${ys(sd.getVal(adjustedSeries[i]))} `;
+      }
+      g += `<path d="${line}" fill="none" stroke="${adjColor}" stroke-width="1.8" stroke-dasharray="2,3" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/>`;
+    });
+    g += `<text x="${xs(adjustedSeries.length - 1) - 6}" y="${ys(seriesDefs[0].getVal(adjustedSeries[adjustedSeries.length - 1])) + 16}" font-size="10.5" fill="${adjColor}" font-family="Inter,sans-serif" font-weight="600" text-anchor="end">if paid today</text>`;
+  }
+
   // event ticks
   const showCC = bucketFilter === 'personal';
   for (const s of series) {
@@ -168,6 +185,8 @@ function buildChartSVG(
 
 interface Props {
   entries: CashFlowEntry[];
+  adjustedEntries: CashFlowEntry[];
+  hasOverdue: boolean;
   scrubIndex: number;
   onScrubChange: (i: number) => void;
   horizon: number;
@@ -176,11 +195,12 @@ interface Props {
 }
 
 export default function CashFlowChart({
-  entries, scrubIndex, onScrubChange, horizon, onHorizonChange, bucketFilter,
+  entries, adjustedEntries, hasOverdue, scrubIndex, onScrubChange, horizon, onHorizonChange, bucketFilter,
 }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [readout, setReadout] = useState<ReadoutState | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [showAdjusted, setShowAdjusted] = useState(false);
 
   const series = useMemo<ChartSeries[]>(() =>
     entries.map((e, i) => ({
@@ -194,12 +214,25 @@ export default function CashFlowChart({
     [entries]
   );
 
+  const adjustedChartSeries = useMemo<ChartSeries[]>(() =>
+    adjustedEntries.map((e, i) => ({
+      i,
+      d: new Date(e.date + 'T00:00:00'),
+      balP: e.balP,
+      balM: e.balM,
+      bal: e.balance,
+      events: e.breakdown,
+    })),
+    [adjustedEntries]
+  );
+
   useLayoutEffect(() => {
     if (!svgRef.current || series.length === 0) return;
-    const { svgHTML, readout: ro } = buildChartSVG(series, scrubIndex, bucketFilter);
+    const adj = showAdjusted && hasOverdue ? adjustedChartSeries : null;
+    const { svgHTML, readout: ro } = buildChartSVG(series, adj, scrubIndex, bucketFilter);
     svgRef.current.innerHTML = svgHTML;
     setReadout(ro);
-  }, [series, scrubIndex, bucketFilter]);
+  }, [series, adjustedChartSeries, showAdjusted, hasOverdue, scrubIndex, bucketFilter]);
 
   function svgToIndex(clientX: number): number {
     if (!svgRef.current || series.length === 0) return 0;
@@ -289,6 +322,17 @@ export default function CashFlowChart({
 
       <div className="chart-head">
         <span className="lbl">Scrub · +{si}d from today</span>
+        {hasOverdue && (
+          <button
+            type="button"
+            className={`toggle-adj${showAdjusted ? ' on' : ''}`}
+            aria-pressed={showAdjusted ? 'true' : 'false'}
+            onClick={() => setShowAdjusted(v => !v)}
+            title="Show the balance if all overdue bills were paid today"
+          >
+            <span className="sw" /> If paid today
+          </button>
+        )}
         <div className="seg" role="group">
           {([{ label: '1M', days: 30 }, { label: '3M', days: 90 }, { label: '6M', days: 180 }, { label: '1Y', days: 365 }]).map(({ label, days }) => (
             <button
