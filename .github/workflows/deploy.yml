@@ -72,4 +72,4 @@ jobs:
       - name: Health check
         run: |
           sleep 5
-          curl -sf http://localhost:3001/api/health || exit 1
+          curl -sf http://192.168.1.105:3001/api/health || exit 1
