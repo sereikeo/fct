@@ -34,6 +34,27 @@ export interface CashFlowEntry {
   breakdown: LineItem[];
 }
 
+export interface OverdueItem {
+  budgetItemId: string;
+  name: string;
+  bucket: Bucket;
+  forecastAmount: number;
+  dueDate: string;
+  daysOverdue: number;
+}
+
+export interface OverdueTotals {
+  personal: number;
+  maple: number;
+}
+
+export interface CashFlowResponse {
+  entries: CashFlowEntry[];
+  adjustedEntries: CashFlowEntry[];
+  overdueItems: OverdueItem[];
+  overdueTotals: OverdueTotals;
+}
+
 export interface EnvelopeOverride {
   id: string;
   budgetItemId: string;
@@ -83,7 +104,7 @@ export const QUERY_KEYS = {
   health: ['health'] as const,
 };
 
-export async function getCashflow(from: string, to: string): Promise<{ entries: CashFlowEntry[] }> {
+export async function getCashflow(from: string, to: string): Promise<CashFlowResponse> {
   const { data } = await client.get('/cashflow', { params: { from, to } });
   return data;
 }

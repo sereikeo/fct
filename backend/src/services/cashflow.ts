@@ -1,5 +1,8 @@
 import db from '../db';
-import type { BudgetItemType, Bucket, CashFlowEntry, LineItem } from '../types';
+import type {
+  BudgetItemType, Bucket, CashFlowEntry, LineItem,
+  OverdueItem, OverdueTotals, CashFlowResult,
+} from '../types';
 
 // ---------------------------------------------------------------------------
 // Config — read inside computeCashFlow so tests can override process.env
@@ -15,7 +18,8 @@ function getConfig() {
   const balM     = process.env.FCT_OPENING_BALANCE_MAPLE !== undefined
     ? parseFloat(process.env.FCT_OPENING_BALANCE_MAPLE)
     : total / 2;
-  return { closeDay, dueDay, balP, balM };
+  const openingBalanceDate = process.env.FCT_OPENING_BALANCE_DATE?.trim() || null;
+  return { closeDay, dueDay, balP, balM, openingBalanceDate };
 }
 
 // ---------------------------------------------------------------------------
@@ -241,11 +245,21 @@ const stmtRecons    = db.prepare('SELECT budget_item_id, date, actual_amount, de
 // computeCashFlow
 // ---------------------------------------------------------------------------
 
-export function computeCashFlow(from: string, to: string): CashFlowEntry[] {
-  const { closeDay, dueDay, balP: initBalP, balM: initBalM } = getConfig();
+export function computeCashFlow(from: string, to: string): CashFlowResult {
+  const { closeDay, dueDay, balP: initBalP, balM: initBalM, openingBalanceDate } = getConfig();
 
   const fromDate = parseDate(from);
   const toDate   = parseDate(to);
+
+  // Seed is anchored at openingBalanceDate (fallback: fromDate). The walk
+  // always starts at the seed — if the seed is before `from`, we walk
+  // forward through `from` to arrive at the correct seed for [from, to];
+  // if the seed is after `from`, we have no balance information for dates
+  // before the seed, so we skip them.
+  const seedDate     = openingBalanceDate ? parseDate(openingBalanceDate) : fromDate;
+  const walkStart    = seedDate;
+  const emitStart    = seedDate > fromDate ? seedDate : fromDate;
+  const emitStartStr = fmtDate(emitStart);
 
   const items     = stmtItems.all()     as ItemRow[];
   const overrides = stmtOverrides.all() as OverrideRow[];
@@ -262,34 +276,61 @@ export function computeCashFlow(from: string, to: string): CashFlowEntry[] {
     reconMap.set(`${r.budget_item_id}:${r.date}`, r);
   }
 
-  // Buckets: non-CC occurrences keyed by date; CC occurrences keyed by statement due date.
-  // nonCCByDate is pre-seeded for every day in [from, to] so the output has no gaps.
-  const nonCCByDate = new Map<string, Occurrence[]>();
-  const ccByDueDate = new Map<string, Occurrence[]>();
-
-  for (let d = fromDate; d <= toDate; d = addDays(d, 1)) {
-    nonCCByDate.set(fmtDate(d), []);
-  }
-
-  // CC items are expanded from 35 days before `from` so that items whose
-  // occurrence date falls in the previous statement period (before `from`) but
-  // whose CC due date lands inside [from, to] are captured correctly.
-  const ccFrom = addDays(fromDate, -35);
+  // Partition into overdue (due_date < openingBalanceDate) and current.
+  // An overdue card's due_date hasn't been rolled forward by the Notion
+  // automation, so the whole card is suppressed from forward projection —
+  // surfaced separately via overdueItems / overdueTotals.
+  const overdueItems: OverdueItem[] = [];
+  const overdueTotals: OverdueTotals = { personal: 0, maple: 0 };
+  const currentItems: ItemRow[] = [];
 
   for (const item of items) {
     if (!item.frequency || !item.type || !item.due_date) continue;
+    if (openingBalanceDate && item.due_date < openingBalanceDate) {
+      const daysOverdue = Math.round(
+        (seedDate.getTime() - parseDate(item.due_date).getTime()) / 86_400_000
+      );
+      overdueItems.push({
+        budgetItemId:   item.id,
+        name:           item.name,
+        bucket:         item.bucket,
+        forecastAmount: item.forecast_amount,
+        dueDate:        item.due_date,
+        daysOverdue,
+      });
+      overdueTotals[item.bucket] += item.forecast_amount;
+    } else {
+      currentItems.push(item);
+    }
+  }
 
+  // Buckets: non-CC occurrences keyed by date; CC occurrences keyed by statement due date.
+  // nonCCByDate is pre-seeded for every day in [walkStart, to] so the output has no gaps.
+  const nonCCByDate = new Map<string, Occurrence[]>();
+  const ccByDueDate = new Map<string, Occurrence[]>();
+
+  for (let d = walkStart; d <= toDate; d = addDays(d, 1)) {
+    nonCCByDate.set(fmtDate(d), []);
+  }
+
+  // CC items are expanded from 35 days before walkStart so that items whose
+  // occurrence date falls in the previous statement period (before walkStart)
+  // but whose CC due date lands inside [walkStart, to] are captured correctly.
+  const ccFrom = addDays(walkStart, -35);
+  const walkStartStr = fmtDate(walkStart);
+
+  for (const item of currentItems) {
     if (item.payment === 'Credit') {
       const occs = buildOccurrences(item, ccFrom, toDate, overrideMap, reconMap);
       for (const occ of occs) {
         const due = fmtDate(ccDueDate(parseDate(occ.date), closeDay, dueDay));
-        if (due >= from && due <= to) {
+        if (due >= walkStartStr && due <= to) {
           if (!ccByDueDate.has(due)) ccByDueDate.set(due, []);
           ccByDueDate.get(due)!.push(occ);
         }
       }
     } else {
-      const occs = buildOccurrences(item, fromDate, toDate, overrideMap, reconMap);
+      const occs = buildOccurrences(item, walkStart, toDate, overrideMap, reconMap);
       for (const occ of occs) {
         nonCCByDate.get(occ.date)?.push(occ);
       }
@@ -301,7 +342,7 @@ export function computeCashFlow(from: string, to: string): CashFlowEntry[] {
   let balM = initBalM;
   const entries: CashFlowEntry[] = [];
 
-  for (let d = fromDate; d <= toDate; d = addDays(d, 1)) {
+  for (let d = walkStart; d <= toDate; d = addDays(d, 1)) {
     const dateStr = fmtDate(d);
     let inflow = 0;
     let outflow = 0;
@@ -331,18 +372,31 @@ export function computeCashFlow(from: string, to: string): CashFlowEntry[] {
       breakdown.push(makeLineItem(occ, true));
     }
 
-    entries.push({
-      date:      dateStr,
-      balance:   balP + balM,
-      balP,
-      balM,
-      inflow,
-      outflow,
-      breakdown,
-    });
+    if (dateStr >= emitStartStr) {
+      entries.push({
+        date:      dateStr,
+        balance:   balP + balM,
+        balP,
+        balM,
+        inflow,
+        outflow,
+        breakdown,
+      });
+    }
   }
 
-  return entries;
+  // adjustedEntries: same walk, but with overdue totals deducted from seed per
+  // bucket — represents the balance if overdue bills were paid today.
+  const overdueP = overdueTotals.personal;
+  const overdueM = overdueTotals.maple;
+  const adjustedEntries: CashFlowEntry[] = entries.map(e => ({
+    ...e,
+    balP:    e.balP - overdueP,
+    balM:    e.balM - overdueM,
+    balance: e.balance - overdueP - overdueM,
+  }));
+
+  return { entries, adjustedEntries, overdueItems, overdueTotals };
 }
 
 function makeLineItem(occ: Occurrence, isCC: boolean): LineItem {

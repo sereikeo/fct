@@ -60,6 +60,27 @@ export interface CashFlowEntry {
   breakdown: LineItem[];
 }
 
+export interface OverdueItem {
+  budgetItemId: string;
+  name: string;
+  bucket: Bucket;
+  forecastAmount: number;
+  dueDate: string;
+  daysOverdue: number;
+}
+
+export interface OverdueTotals {
+  personal: number;
+  maple: number;
+}
+
+export interface CashFlowResult {
+  entries: CashFlowEntry[];
+  adjustedEntries: CashFlowEntry[];
+  overdueItems: OverdueItem[];
+  overdueTotals: OverdueTotals;
+}
+
 export interface EnvelopeWithOverride extends BudgetItem {
   overrides: EnvelopeOverride[];
 }

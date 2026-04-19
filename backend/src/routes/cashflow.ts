@@ -15,5 +15,5 @@ cashflowRouter.get('/', (req, res) => {
     return res.status(400).json({ error: result.error.errors[0].message, code: 'VALIDATION_ERROR' });
   }
   const { from, to } = result.data;
-  return res.json({ entries: computeCashFlow(from, to) });
+  return res.json(computeCashFlow(from, to));
 });
