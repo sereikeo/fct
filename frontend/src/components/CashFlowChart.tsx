@@ -129,7 +129,7 @@ function buildChartSVG(
       }
       g += `<path d="${line}" fill="none" stroke="${adjColor}" stroke-width="1.8" stroke-dasharray="2,3" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/>`;
     });
-    g += `<text x="${xs(adjustedSeries.length - 1) - 6}" y="${ys(seriesDefs[0].getVal(adjustedSeries[adjustedSeries.length - 1])) + 16}" font-size="10.5" fill="${adjColor}" font-family="Inter,sans-serif" font-weight="600" text-anchor="end">if paid today</text>`;
+    g += `<text x="${xs(adjustedSeries.length - 1) - 6}" y="${ys(seriesDefs[0].getVal(adjustedSeries[adjustedSeries.length - 1])) + 16}" font-size="10.5" fill="${adjColor}" font-family="Inter,sans-serif" font-weight="600" text-anchor="end">net cash position</text>`;
   }
 
   // event ticks
@@ -328,9 +328,9 @@ export default function CashFlowChart({
             className={`toggle-adj${showAdjusted ? ' on' : ''}`}
             aria-pressed={showAdjusted ? 'true' : 'false'}
             onClick={() => setShowAdjusted(v => !v)}
-            title="Show the balance if all overdue bills were paid today"
+            title="Show the balance with overdue bills deducted from today"
           >
-            <span className="sw" /> If paid today
+            <span className="sw" /> Net Cash Position
           </button>
         )}
         <div className="seg" role="group">
