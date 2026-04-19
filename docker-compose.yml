@@ -49,6 +49,3 @@ volumes:
   caddy_config:
   frontend_dist:
 
-networks:
-  default:
-    name: fct-network
