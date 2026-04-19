@@ -43,8 +43,7 @@ jobs:
           context: ./frontend
           push: true
           tags: ${{ env.IMAGE_FRONTEND }}:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          no-cache: true
 
   deploy:
     runs-on: self-hosted
@@ -66,7 +65,10 @@ jobs:
       - name: Redeploy frontend (repopulate dist volume)
         run: |
           cd /volume1/docker/fct
-          docker-compose up -d --force-recreate --no-deps frontend
+          docker-compose stop frontend
+          docker-compose rm -f frontend
+          docker volume rm fct_frontend_dist || true
+          docker-compose up -d --no-deps frontend
           docker-compose restart caddy
 
       - name: Health check
