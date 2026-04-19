@@ -72,11 +72,12 @@ function CCStatementCard({ entries }: { entries: CashFlowEntry[] }) {
 }
 
 // ——— "On this date" sidebar card ———
-function OnThisDateCard({ entries, scrubIndex }: { entries: CashFlowEntry[]; scrubIndex: number }) {
+function OnThisDateCard({ entries, scrubIndex, bucketFilter }: { entries: CashFlowEntry[]; scrubIndex: number; bucketFilter: BucketFilter }) {
   const si = Math.max(0, Math.min(scrubIndex, entries.length - 1));
   const entry = entries[si];
   const incomeReceived = entries.slice(0, si + 1).reduce((t, e) => t + e.inflow, 0);
   const billsPaid = entries.slice(0, si + 1).reduce((t, e) => t + e.outflow, 0);
+  const showCC = bucketFilter === 'personal';
   const ccEntry = entries.find(e => e.breakdown.some(b => b.isCC && b.type === 'expense'));
   const ccTotal = ccEntry
     ? ccEntry.breakdown.filter(b => b.isCC && b.type === 'expense').reduce((t, b) => t + (b.overrideAmount ?? b.forecastAmount), 0)
@@ -115,10 +116,12 @@ function OnThisDateCard({ entries, scrubIndex }: { entries: CashFlowEntry[]; scr
               <span className="k">Bills paid</span>
               <span className="v">−{fmtAUD(billsPaid)}</span>
             </div>
-            <div className="kv">
-              <span className="k">Pending on CC</span>
-              <span className="v" style={{ color: 'var(--cc)' }}>{fmtAUD(ccTotal)}</span>
-            </div>
+            {showCC && (
+              <div className="kv">
+                <span className="k">Pending on CC</span>
+                <span className="v" style={{ color: 'var(--cc)' }}>{fmtAUD(ccTotal)}</span>
+              </div>
+            )}
           </>
         ) : (
           <div style={{ color: 'var(--mute)', fontSize: 12 }}>Waiting for data…</div>
@@ -135,6 +138,7 @@ function LedgerCard({ entries, bucketFilter }: { entries: CashFlowEntry[]; bucke
     for (const entry of entries.slice(0, 91)) {
       for (const item of entry.breakdown) {
         if (bucketFilter !== 'all' && item.bucket !== bucketFilter) continue;
+        if (item.isCC && bucketFilter !== 'personal') continue;
         out.push({ entry, item });
       }
     }
@@ -347,7 +351,7 @@ export default function Dashboard({ dateRange, onDateRangeChange }: Props) {
             <span><i className="fc" />forecast</span>
             <span><i className="today" />today</span>
             <span>▲ income · ▼ bill</span>
-            <span><i className="cc" />◆ CC stmt</span>
+            {bucketFilter === 'personal' && <span><i className="cc" />◆ CC stmt</span>}
           </div>
         </section>
 
@@ -369,8 +373,8 @@ export default function Dashboard({ dateRange, onDateRangeChange }: Props) {
           )}
 
           <div className="stack">
-            <OnThisDateCard entries={entries} scrubIndex={scrubIndex} />
-            <CCStatementCard entries={entries} />
+            <OnThisDateCard entries={entries} scrubIndex={scrubIndex} bucketFilter={bucketFilter} />
+            {bucketFilter === 'personal' && <CCStatementCard entries={entries} />}
           </div>
         </section>
 

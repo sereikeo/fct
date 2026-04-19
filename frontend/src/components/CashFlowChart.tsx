@@ -116,10 +116,12 @@ function buildChartSVG(
   g += `<text x="${xs(0) + 14}" y="${pad.t + 12}" font-size="10.5" fill="#131211" font-family="Inter,sans-serif" font-weight="600">TODAY · actual ends</text>`;
 
   // event ticks
+  const showCC = bucketFilter === 'personal';
   for (const s of series) {
     for (const e of s.events) {
-      const up = e.type === 'income';
       const isStmt = e.isCC;
+      if (isStmt && !showCC) continue;
+      const up = e.type === 'income';
       let yVal: number;
       if (showSplit) yVal = e.bucket === 'maple' ? s.balM : s.balP;
       else yVal = seriesDefs[0].getVal(s);
@@ -274,13 +276,15 @@ export default function CashFlowChart({
           </div>
         </div>
 
-        <div className="stat sm cc">
-          <div className="lbl">next CC statement</div>
-          <div className="val mono">{ccTotal > 0 ? fmtAUD(ccTotal) : '—'}</div>
-          <div className="sub">
-            {ccDate ? `due ${fmtMD(ccDate)} · ${ccCount} items` : 'no CC items found'}
+        {bucketFilter === 'personal' && (
+          <div className="stat sm cc">
+            <div className="lbl">next CC statement</div>
+            <div className="val mono">{ccTotal > 0 ? fmtAUD(ccTotal) : '—'}</div>
+            <div className="sub">
+              {ccDate ? `due ${fmtMD(ccDate)} · ${ccCount} items` : 'no CC items found'}
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       <div className="chart-head">
