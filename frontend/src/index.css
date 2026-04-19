@@ -251,6 +251,23 @@ button{font-family:inherit}
   .bar-inner > .btn.ghost.sync-now{order:6}
 }
 
+/* Notion preview — on narrow screens, drop the 6-col grid
+   (80+90+100+110px of fixed cols overflows below ~500px and squashes the
+   name column to sub-word width, which stacks characters). */
+@media(max-width:720px){
+  .notion-row{
+    display:flex;
+    flex-wrap:wrap;
+    align-items:center;
+    gap:6px 10px;
+    padding:12px 16px;
+  }
+  .notion-row .name{flex:1 1 100%;min-width:0}
+  .notion-row .num{flex:0 0 auto;text-align:left;order:1}
+  .notion-row .date{flex:0 0 auto;order:2}
+  .notion-row .chips{flex-wrap:wrap;order:5}
+}
+
 /* Header — mobile: compact segments + hide subtitle */
 @media(max-width:520px){
   .bar-inner{padding:10px 16px;gap:8px;row-gap:10px}
