@@ -36,7 +36,7 @@ services:
     restart: unless-stopped
     environment:
       REPO_URL: ${GITHUB_REPO_URL:-}
-      RUNNER_TOKEN: ${RUNNER_TOKEN:-}
+      ACCESS_TOKEN: ${GH_PAT:-}
       RUNNER_NAME: fct-runner
       RUNNER_WORKDIR: /tmp/runner
       RUNNER_SCOPE: repo
