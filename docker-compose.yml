@@ -41,7 +41,8 @@ services:
       RUNNER_WORKDIR: /tmp/runner
       RUNNER_SCOPE: repo
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
+      -- /var/run/docker.sock:/var/run/docker.sock
+      - /volume1/docker/fct:/volume1/docker/fct
 
 volumes:
   caddy_data:
