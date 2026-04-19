@@ -79,7 +79,11 @@ function mapPageToRow(page: PageObjectResponse): Record<string, unknown> | null 
   const recurInterval = extractNumber(p['Recur Interval']) || 1;
   let frequency: 'weekly' | 'fortnightly' | 'monthly' | 'annual';
   if (recurUnit.startsWith('Week')) {
-    frequency = recurInterval === 2 ? 'fortnightly' : 'weekly';
+    // 1 week → weekly, 2 → fortnightly, 3+ → monthly (the Frequency enum has
+    // no N-weekly bucket, so anything 3w+ falls through to monthly cadence).
+    if (recurInterval === 1) frequency = 'weekly';
+    else if (recurInterval === 2) frequency = 'fortnightly';
+    else frequency = 'monthly';
   } else if (recurUnit.startsWith('Fortnight')) {
     frequency = 'fortnightly';
   } else if (recurUnit.startsWith('Year')) {
