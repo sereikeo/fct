@@ -365,7 +365,10 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
   //   - Projected: unconfirmed AND expected_date > openingBalanceDate. Genuine
   //     forecast — moves the balance as if paid on time.
   const overdueItems: OverdueItem[] = [];
-  const overdueTotals: OverdueTotals = { personal: 0, maple: 0 };
+  const overdueTotals: OverdueTotals = {
+    personal: { owedIn: 0, owedOut: 0 },
+    maple:    { owedIn: 0, owedOut: 0 },
+  };
   const overdueItemIds = new Set<string>();          // budget_item.id of overdue items
   const unconfirmedExpectedByPage = new Map<string, string>(); // page id → expected_date of active ledger row
   const confirmedTxs:  TxRow[] = [];
@@ -397,7 +400,8 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
         missedCycles,
         totalOwed,
       });
-      overdueTotals[tx.bucket] += totalOwed;
+      if (tx.type === 'income') overdueTotals[tx.bucket].owedIn  += totalOwed;
+      else                       overdueTotals[tx.bucket].owedOut += totalOwed;
       if (item) overdueItemIds.add(item.id);
       overdueTxs.push(tx);
     } else {
@@ -598,15 +602,16 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
     }
   }
 
-  // adjustedEntries: same walk, but with overdue totals deducted from seed per
-  // bucket — represents the balance if overdue bills were paid today.
-  const overdueP = overdueTotals.personal;
-  const overdueM = overdueTotals.maple;
+  // adjustedEntries: same walk, but shifted by the net overdue impact per
+  // bucket — represents the balance if all overdue were resolved. owedIn
+  // raises the balance (money arriving), owedOut lowers it (bills paid).
+  const netP = overdueTotals.personal.owedIn - overdueTotals.personal.owedOut;
+  const netM = overdueTotals.maple.owedIn    - overdueTotals.maple.owedOut;
   const adjustedEntries: CashFlowEntry[] = entries.map(e => ({
     ...e,
-    balP:    e.balP - overdueP,
-    balM:    e.balM - overdueM,
-    balance: e.balance - overdueP - overdueM,
+    balP:    e.balP + netP,
+    balM:    e.balM + netM,
+    balance: e.balance + netP + netM,
   }));
 
   return { entries, adjustedEntries, overdueItems, overdueTotals };

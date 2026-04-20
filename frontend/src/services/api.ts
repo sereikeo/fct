@@ -47,9 +47,14 @@ export interface OverdueItem {
   totalOwed: number;        // forecastAmount * missedCycles
 }
 
+export interface OverdueBucketTotal {
+  owedIn: number;
+  owedOut: number;
+}
+
 export interface OverdueTotals {
-  personal: number;
-  maple: number;
+  personal: OverdueBucketTotal;
+  maple:    OverdueBucketTotal;
 }
 
 export interface CashFlowResponse {

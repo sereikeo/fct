@@ -206,6 +206,8 @@ button{font-family:inherit}
 .overdue-summary .tot{display:inline-flex;align-items:center;gap:6px;color:var(--ink-2)}
 .overdue-summary .tot .sw{width:7px;height:7px;border-radius:50%}
 .overdue-summary .tot b{color:var(--accent);font-weight:600}
+.overdue-summary .tot b.owed-in{color:var(--green)}
+.overdue-summary .tot b.owed-out{color:var(--accent)}
 
 /* Variable bars */
 .var-row{display:grid;grid-template-columns:180px 1fr 160px;gap:16px;align-items:center;padding:12px 0;border-bottom:1px solid var(--line-2)}

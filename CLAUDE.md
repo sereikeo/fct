@@ -139,7 +139,7 @@ Core server-side logic in `backend/src/services/cashflow.ts`. Accepts `from`, `t
 5. **Bundle CC items** — items where `payment = 'Credit'` accumulate into the CC statement. They do NOT appear as individual deductions on their due dates. Instead, a single CC statement deduction lands on the CC statement due date. This is a key design behaviour — credit purchases are invisible in the balance until statement day.
 6. **Partition overdue items** — when `FCT_OPENING_BALANCE_DATE` is set, any budget item with `due_date < FCT_OPENING_BALANCE_DATE` is treated as overdue (Notion's automation advances the `due_date` only when a bill is marked paid, so a past date means unpaid). For each overdue item, the engine steps forward from `due_date` in the item's frequency cadence and counts occurrences before `FCT_OPENING_BALANCE_DATE` — that count is `missedCycles`, and `totalOwed = forecastAmount × missedCycles` is the real liability. Overdue cards are suppressed from the forward projection entirely and surfaced in a separate `overdueItems` array; `overdueTotals` per bucket sum `totalOwed`.
 7. Compute running balance day-by-day. Seed is valid at `FCT_OPENING_BALANCE_DATE` (or `from` if unset). If the seed date is before `from`, the engine walks seed → from first to arrive at the correct seed, emitting entries only within `[from, to]`.
-8. **adjustedEntries** — the same series as `entries` but with `overdueTotals` deducted from the seed per bucket, so the frontend can toggle between "forecast as-is" and "if overdue bills were paid today".
+8. **adjustedEntries** — the same series as `entries` but shifted by the net overdue impact per bucket (`owedIn − owedOut`). Income you're owed raises the balance; bills you owe lower it. Lets the frontend toggle between "forecast as-is" and "if everything overdue were resolved".
 
 Returns `CashFlowResult`:
 ```typescript
@@ -177,11 +177,19 @@ interface OverdueItem {
   totalOwed: number          // forecastAmount * missedCycles — the real liability
 }
 
+interface OverdueBucketTotal {
+  owedIn: number    // money owed TO you on this bucket (unconfirmed income)
+  owedOut: number   // money owed BY you on this bucket (unconfirmed expense/transfer)
+}
+
 interface CashFlowResult {
   entries: CashFlowEntry[]
-  adjustedEntries: CashFlowEntry[]   // entries with overdueTotals deducted from seed
+  adjustedEntries: CashFlowEntry[]   // entries shifted by net overdue impact per bucket
   overdueItems: OverdueItem[]
-  overdueTotals: { personal: number; maple: number }
+  overdueTotals: {
+    personal: OverdueBucketTotal
+    maple:    OverdueBucketTotal
+  }
 }
 ```
 

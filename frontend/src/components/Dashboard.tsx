@@ -161,9 +161,11 @@ function LedgerCard({
     return filtered.slice().sort((a, b) => a.dueDate.localeCompare(b.dueDate));
   }, [overdueItems, bucketFilter]);
 
-  const showPersonalTotal = overdueTotals.personal > 0 && bucketFilter !== 'maple';
-  const showMapleTotal    = overdueTotals.maple    > 0 && bucketFilter !== 'personal';
-  const showSummary       = overdueRows.length > 0 && (showPersonalTotal || showMapleTotal);
+  const personalHas = overdueTotals.personal.owedIn > 0 || overdueTotals.personal.owedOut > 0;
+  const mapleHas    = overdueTotals.maple.owedIn    > 0 || overdueTotals.maple.owedOut    > 0;
+  const showPersonal = personalHas && bucketFilter !== 'maple';
+  const showMaple    = mapleHas    && bucketFilter !== 'personal';
+  const showSummary  = overdueRows.length > 0 && (showPersonal || showMaple);
 
   return (
     <div className="card flush">
@@ -177,16 +179,40 @@ function LedgerCard({
       {showSummary && (
         <div className="overdue-summary">
           <span className="lbl">Overdue</span>
-          {showPersonalTotal && (
+          {showPersonal && (
             <span className="tot">
               <span className="sw" style={{ background: 'var(--personal)' }} />
-              Personal <b className="mono">−A${overdueTotals.personal.toFixed(2)}</b>
+              Personal
+              {overdueTotals.personal.owedIn > 0 && (
+                <>
+                  {' · owed to you '}
+                  <b className="mono owed-in">+A${overdueTotals.personal.owedIn.toFixed(2)}</b>
+                </>
+              )}
+              {overdueTotals.personal.owedOut > 0 && (
+                <>
+                  {' · owed by you '}
+                  <b className="mono owed-out">−A${overdueTotals.personal.owedOut.toFixed(2)}</b>
+                </>
+              )}
             </span>
           )}
-          {showMapleTotal && (
+          {showMaple && (
             <span className="tot">
               <span className="sw" style={{ background: 'var(--maple)' }} />
-              Maple <b className="mono">−A${overdueTotals.maple.toFixed(2)}</b>
+              Maple
+              {overdueTotals.maple.owedIn > 0 && (
+                <>
+                  {' · owed to you '}
+                  <b className="mono owed-in">+A${overdueTotals.maple.owedIn.toFixed(2)}</b>
+                </>
+              )}
+              {overdueTotals.maple.owedOut > 0 && (
+                <>
+                  {' · owed by you '}
+                  <b className="mono owed-out">−A${overdueTotals.maple.owedOut.toFixed(2)}</b>
+                </>
+              )}
             </span>
           )}
         </div>
@@ -356,7 +382,10 @@ export default function Dashboard({ dateRange, onDateRangeChange }: Props) {
   const adjustedEntries = useMemo<CashFlowEntry[]>(() => data?.adjustedEntries ?? [], [data]);
   const overdueItems = useMemo<OverdueItem[]>(() => data?.overdueItems ?? [], [data]);
   const overdueTotals = useMemo<OverdueTotals>(
-    () => data?.overdueTotals ?? { personal: 0, maple: 0 },
+    () => data?.overdueTotals ?? {
+      personal: { owedIn: 0, owedOut: 0 },
+      maple:    { owedIn: 0, owedOut: 0 },
+    },
     [data]
   );
   const envelopes = useMemo<EnvelopeWithOverride[]>(() => envData?.envelopes ?? [], [envData]);
