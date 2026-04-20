@@ -66,12 +66,13 @@ export interface CashFlowEntry {
 export interface OverdueItem {
   budgetItemId: string;
   name: string;
+  type: BudgetItemType;     // drives direction: income = owed to you, expense/transfer = owed by you
   bucket: Bucket;
   forecastAmount: number;   // per-cycle amount
   dueDate: string;
   daysOverdue: number;
   missedCycles: number;     // occurrences from dueDate up to FCT_OPENING_BALANCE_DATE
-  totalOwed: number;        // forecastAmount * missedCycles — the real liability
+  totalOwed: number;        // forecastAmount * missedCycles — unsigned magnitude
 }
 
 export interface OverdueBucketTotal {

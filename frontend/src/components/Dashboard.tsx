@@ -149,6 +149,7 @@ function LedgerCard({
       for (const item of entry.breakdown) {
         if (bucketFilter !== 'all' && item.bucket !== bucketFilter) continue;
         if (item.isCC && bucketFilter !== 'personal') continue;
+        if (item.isPending) continue; // already listed in the overdue section above
         out.push({ entry, item });
       }
     }
@@ -228,6 +229,9 @@ function LedgerCard({
           <tbody>
             {overdueRows.map((o) => {
               const due = new Date(o.dueDate + 'T00:00:00');
+              const isIncoming = o.type === 'income';
+              const sign  = isIncoming ? '+' : '−';
+              const color = isIncoming ? 'var(--green)' : 'var(--accent)';
               return (
                 <tr key={`overdue-${o.budgetItemId}`} className="overdue">
                   <td>
@@ -255,12 +259,12 @@ function LedgerCard({
                     </span>
                   </td>
                   <td style={{ color: 'var(--mute)' }}>—</td>
-                  <td className="num" style={{ color: 'var(--accent)', fontWeight: 600 }}>
-                    −A${o.totalOwed.toFixed(2)}
+                  <td className="num" style={{ color, fontWeight: 600 }}>
+                    {sign}A${o.totalOwed.toFixed(2)}
                   </td>
                   <td>
                     <span className="reco-pill overdue">
-                      overdue · {o.daysOverdue}d
+                      {isIncoming ? 'awaiting' : 'overdue'} · {o.daysOverdue}d
                     </span>
                   </td>
                 </tr>

@@ -393,6 +393,7 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
       overdueItems.push({
         budgetItemId:   item?.id ?? tx.notion_page_id,
         name:           tx.name,
+        type:           tx.type,
         bucket:         tx.bucket,
         forecastAmount: tx.amount,
         dueDate:        tx.expected_date,

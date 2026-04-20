@@ -39,12 +39,13 @@ export interface CashFlowEntry {
 export interface OverdueItem {
   budgetItemId: string;
   name: string;
+  type: BudgetItemType;
   bucket: Bucket;
-  forecastAmount: number;   // per-cycle amount
+  forecastAmount: number;
   dueDate: string;
   daysOverdue: number;
   missedCycles: number;
-  totalOwed: number;        // forecastAmount * missedCycles
+  totalOwed: number;
 }
 
 export interface OverdueBucketTotal {
