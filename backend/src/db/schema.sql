@@ -4,7 +4,7 @@ CREATE TABLE IF NOT EXISTS budget_items (
   name            TEXT NOT NULL,
   category        TEXT,
   type            TEXT NOT NULL CHECK (type IN ('income', 'expense', 'transfer')),
-  frequency       TEXT NOT NULL CHECK (frequency IN ('once', 'weekly', 'fortnightly', 'monthly', 'annual')),
+  frequency       TEXT CHECK (frequency IN ('once', 'weekly', 'fortnightly', 'monthly', 'annual')),
   recur_interval  INTEGER NOT NULL DEFAULT 1,
   due_date        TEXT NULL,
   is_variable     INTEGER NOT NULL DEFAULT 0,

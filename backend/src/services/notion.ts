@@ -76,45 +76,63 @@ function mapPageToRow(page: PageObjectResponse): Record<string, unknown> | null 
     : budget === 'transfer' ? 'transfer'
     : 'expense';
 
-  // Recur Unit select: 'Month(s)', 'Week(s)', 'Year(s)', 'Day(s)'
+  // Recur Unit select: 'Month(s)', 'Week(s)', 'Year(s)', 'Day(s)' — or null
+  // when the item is a genuine once-off (no recurrence configured in Notion).
   // Recur Interval: integer multiplier. Pair (unit, interval) maps to
   // (frequency, recur_interval) — the engine steps by base_step × interval.
-  const recurUnit = extractSelect(p['Recur Unit']) ?? '';
-  const notionInterval = extractNumber(p['Recur Interval']) || 1;
-  let frequency: 'weekly' | 'fortnightly' | 'monthly' | 'annual';
-  let recurInterval = notionInterval;
-  if (recurUnit.startsWith('Week')) {
-    // Week(s)/1 → weekly, Week(s)/2 → fortnightly (same cadence, use
-    // dedicated enum value), Week(s)/N (N≥3) → weekly × N.
-    if (notionInterval === 1) { frequency = 'weekly'; recurInterval = 1; }
-    else if (notionInterval === 2) { frequency = 'fortnightly'; recurInterval = 1; }
-    else { frequency = 'weekly'; recurInterval = notionInterval; }
-  } else if (recurUnit.startsWith('Fortnight')) {
-    frequency = 'fortnightly';
-  } else if (recurUnit.startsWith('Year')) {
-    frequency = 'annual';
-  } else if (recurUnit.startsWith('Day')) {
-    frequency = 'weekly'; // fallback — treat daily as weekly
-  } else {
-    frequency = 'monthly'; // Month(s) or unknown
-  }
+  const recurUnit    = extractSelect(p['Recur Unit']);
+  const rawInterval  = extractNumber(p['Recur Interval']); // 0 when unset
 
-  const done = extractCheckbox(p['Status']);
+  const done   = extractCheckbox(p['Status']);
   const status = done ? 'done' : 'not started';
 
-  return {
+  const common = {
     notion_page_id: page.id,
     name,
     category: null,
     type,
-    frequency,
-    recur_interval: recurInterval,
     due_date: extractDate(p['Due']) ?? null,
     is_variable: isVariable,
     bucket,
     payment: extractSelect(p['Payment']) ?? 'Direct Debit',
     forecast_amount: extractNumber(p['Amount']),
     status,
+  };
+
+  // Once-off: no Recur Unit AND no Recur Interval. These get frequency=null
+  // and recur_interval=0 so the engine + ledger treat them as single-shot.
+  if (!recurUnit && !rawInterval) {
+    return {
+      ...common,
+      frequency: null,
+      recur_interval: 0,
+    };
+  }
+
+  const notionInterval = rawInterval || 1;
+  let frequency: 'weekly' | 'fortnightly' | 'monthly' | 'annual';
+  let recurInterval = notionInterval;
+  const unit = recurUnit ?? '';
+  if (unit.startsWith('Week')) {
+    // Week(s)/1 → weekly, Week(s)/2 → fortnightly (same cadence, use
+    // dedicated enum value), Week(s)/N (N≥3) → weekly × N.
+    if (notionInterval === 1) { frequency = 'weekly'; recurInterval = 1; }
+    else if (notionInterval === 2) { frequency = 'fortnightly'; recurInterval = 1; }
+    else { frequency = 'weekly'; recurInterval = notionInterval; }
+  } else if (unit.startsWith('Fortnight')) {
+    frequency = 'fortnightly';
+  } else if (unit.startsWith('Year')) {
+    frequency = 'annual';
+  } else if (unit.startsWith('Day')) {
+    frequency = 'weekly'; // fallback — treat daily as weekly
+  } else {
+    frequency = 'monthly'; // Month(s) or unknown
+  }
+
+  return {
+    ...common,
+    frequency,
+    recur_interval: recurInterval,
   };
 }
 
@@ -243,7 +261,7 @@ function updateTransactionLedger(row: {
   name: string;
   type: string;
   bucket: string;
-  frequency: string;
+  frequency: string | null;
   recur_interval: number;
   due_date: string | null;
   forecast_amount: number;
