@@ -13,4 +13,12 @@ db.pragma('busy_timeout = 5000');
 const schema = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf-8');
 db.exec(schema);
 
+// Idempotent migration: add recur_interval column if an older DB predates it.
+// CREATE TABLE IF NOT EXISTS above is a no-op for existing tables, so schema
+// changes to existing columns must be applied explicitly here.
+const cols = db.pragma('table_info(budget_items)') as Array<{ name: string }>;
+if (!cols.some(c => c.name === 'recur_interval')) {
+  db.exec('ALTER TABLE budget_items ADD COLUMN recur_interval INTEGER NOT NULL DEFAULT 1');
+}
+
 export default db;

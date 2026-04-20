@@ -10,6 +10,7 @@ export interface BudgetItem {
   category: string | null;
   type: BudgetItemType;
   frequency: Frequency;
+  recurInterval: number;   // multiplier on the frequency (e.g. monthly/3 = quarterly)
   dueDate: string;
   isVariable: boolean;
   bucket: Bucket;

@@ -73,17 +73,18 @@ function mapPageToRow(page: PageObjectResponse): Record<string, unknown> | null 
     : 'expense';
 
   // Recur Unit select: 'Month(s)', 'Week(s)', 'Year(s)', 'Day(s)'
-  // Recur Interval: integer multiplier; interval=2 + unit=Week(s) means every
-  // two weeks, i.e. fortnightly. Map the pair to the engine's Frequency enum.
+  // Recur Interval: integer multiplier. Pair (unit, interval) maps to
+  // (frequency, recur_interval) — the engine steps by base_step × interval.
   const recurUnit = extractSelect(p['Recur Unit']) ?? '';
-  const recurInterval = extractNumber(p['Recur Interval']) || 1;
+  const notionInterval = extractNumber(p['Recur Interval']) || 1;
   let frequency: 'weekly' | 'fortnightly' | 'monthly' | 'annual';
+  let recurInterval = notionInterval;
   if (recurUnit.startsWith('Week')) {
-    // 1 week → weekly, 2 → fortnightly, 3+ → monthly (the Frequency enum has
-    // no N-weekly bucket, so anything 3w+ falls through to monthly cadence).
-    if (recurInterval === 1) frequency = 'weekly';
-    else if (recurInterval === 2) frequency = 'fortnightly';
-    else frequency = 'monthly';
+    // Week(s)/1 → weekly, Week(s)/2 → fortnightly (same cadence, use
+    // dedicated enum value), Week(s)/N (N≥3) → weekly × N.
+    if (notionInterval === 1) { frequency = 'weekly'; recurInterval = 1; }
+    else if (notionInterval === 2) { frequency = 'fortnightly'; recurInterval = 1; }
+    else { frequency = 'weekly'; recurInterval = notionInterval; }
   } else if (recurUnit.startsWith('Fortnight')) {
     frequency = 'fortnightly';
   } else if (recurUnit.startsWith('Year')) {
@@ -100,6 +101,7 @@ function mapPageToRow(page: PageObjectResponse): Record<string, unknown> | null 
     category: null,
     type,
     frequency,
+    recur_interval: recurInterval,
     due_date: extractDate(p['Due']) ?? null,
     is_variable: isVariable,
     bucket,
@@ -117,10 +119,10 @@ function mapPageToRow(page: PageObjectResponse): Record<string, unknown> | null 
 // updates in place — same upsert semantics, no FK cascade risk.
 const upsertStmt = db.prepare(`
   INSERT INTO budget_items (
-    id, notion_page_id, name, category, type, frequency,
+    id, notion_page_id, name, category, type, frequency, recur_interval,
     due_date, is_variable, bucket, payment, forecast_amount, deleted_at
   ) VALUES (
-    @id, @notion_page_id, @name, @category, @type, @frequency,
+    @id, @notion_page_id, @name, @category, @type, @frequency, @recur_interval,
     @due_date, @is_variable, @bucket, @payment, @forecast_amount, NULL
   )
   ON CONFLICT(notion_page_id) DO UPDATE SET
@@ -128,6 +130,7 @@ const upsertStmt = db.prepare(`
     category        = excluded.category,
     type            = excluded.type,
     frequency       = excluded.frequency,
+    recur_interval  = excluded.recur_interval,
     due_date        = excluded.due_date,
     is_variable     = excluded.is_variable,
     bucket          = excluded.bucket,

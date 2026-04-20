@@ -14,6 +14,7 @@ interface ItemRow {
   category: string | null;
   type: string;
   frequency: string;
+  recur_interval: number;
   due_date: string;
   is_variable: 0 | 1;
   bucket: string;
@@ -46,6 +47,7 @@ function toEnvelope(item: ItemRow, overrides: OverrideRow[]): EnvelopeWithOverri
     category:       item.category,
     type:           item.type as BudgetItem['type'],
     frequency:      item.frequency as BudgetItem['frequency'],
+    recurInterval:  item.recur_interval ?? 1,
     dueDate:        item.due_date,
     isVariable:     item.is_variable === 1,
     bucket:         item.bucket as BudgetItem['bucket'],

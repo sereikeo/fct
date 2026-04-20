@@ -32,6 +32,7 @@ interface ItemRow {
   category: string | null;
   type: BudgetItemType;
   frequency: 'once' | 'weekly' | 'fortnightly' | 'monthly' | 'annual';
+  recur_interval: number;
   due_date: string;
   bucket: Bucket;
   payment: string;
@@ -87,10 +88,12 @@ function clampDay(year: number, month: number, day: number): Date {
 // Recurring expansion
 // ---------------------------------------------------------------------------
 
-// Fixed-interval frequencies (weekly = 7, fortnightly = 14).
+// Fixed-interval frequencies (weekly = 7 days, fortnightly = 14 days). The
+// effective step is baseStep × recurInterval — e.g. weekly × 4 = every 28 days.
 // Fast-forwards from anchor to the first occurrence >= from, then steps forward.
-function expandFixed(anchor: Date, from: Date, to: Date, step: number): Date[] {
+function expandFixed(anchor: Date, from: Date, to: Date, baseStep: number, recurInterval: number): Date[] {
   const dates: Date[] = [];
+  const step = baseStep * Math.max(1, recurInterval);
   let d = anchor;
   if (d < from) {
     const diffDays = Math.ceil((from.getTime() - d.getTime()) / 86_400_000);
@@ -103,31 +106,35 @@ function expandFixed(anchor: Date, from: Date, to: Date, step: number): Date[] {
   return dates;
 }
 
-// Monthly: same day-of-month, clamped to last day of each month.
-function expandMonthly(anchor: Date, from: Date, to: Date): Date[] {
+// Monthly: same day-of-month, clamped to last day of each month. Advances by
+// recurInterval months per step (monthly × 3 = quarterly).
+function expandMonthly(anchor: Date, from: Date, to: Date, recurInterval: number): Date[] {
   const dates: Date[] = [];
+  const step = Math.max(1, recurInterval);
   const anchorDay = anchor.getDate();
   let d = clampDay(anchor.getFullYear(), anchor.getMonth(), anchorDay);
   while (d < from) {
-    d = clampDay(d.getFullYear(), d.getMonth() + 1, anchorDay);
+    d = clampDay(d.getFullYear(), d.getMonth() + step, anchorDay);
   }
   while (d <= to) {
     dates.push(d);
-    d = clampDay(d.getFullYear(), d.getMonth() + 1, anchorDay);
+    d = clampDay(d.getFullYear(), d.getMonth() + step, anchorDay);
   }
   return dates;
 }
 
-// Annual: same month+day each year, clamped (handles Feb 29 → Feb 28 on non-leap years).
-function expandAnnual(anchor: Date, from: Date, to: Date): Date[] {
+// Annual: same month+day each year, clamped (handles Feb 29 → Feb 28 on non-leap
+// years). Advances by recurInterval years per step.
+function expandAnnual(anchor: Date, from: Date, to: Date, recurInterval: number): Date[] {
   const dates: Date[] = [];
+  const step = Math.max(1, recurInterval);
   let d = clampDay(anchor.getFullYear(), anchor.getMonth(), anchor.getDate());
   while (d < from) {
-    d = clampDay(d.getFullYear() + 1, anchor.getMonth(), anchor.getDate());
+    d = clampDay(d.getFullYear() + step, anchor.getMonth(), anchor.getDate());
   }
   while (d <= to) {
     dates.push(d);
-    d = clampDay(d.getFullYear() + 1, anchor.getMonth(), anchor.getDate());
+    d = clampDay(d.getFullYear() + step, anchor.getMonth(), anchor.getDate());
   }
   return dates;
 }
@@ -137,6 +144,7 @@ function expandAnnual(anchor: Date, from: Date, to: Date): Date[] {
 // same expansion logic as forward projection so the cadence stays consistent.
 function countMissedCycles(
   frequency: ItemRow['frequency'],
+  recurInterval: number,
   dueDate: Date,
   openingDate: Date,
 ): number {
@@ -144,10 +152,10 @@ function countMissedCycles(
   const to = addDays(openingDate, -1);
   switch (frequency) {
     case 'once':        return 1;
-    case 'weekly':      return expandFixed(dueDate, dueDate, to, 7).length;
-    case 'fortnightly': return expandFixed(dueDate, dueDate, to, 14).length;
-    case 'monthly':     return expandMonthly(dueDate, dueDate, to).length;
-    case 'annual':      return expandAnnual(dueDate, dueDate, to).length;
+    case 'weekly':      return expandFixed(dueDate, dueDate, to, 7, recurInterval).length;
+    case 'fortnightly': return expandFixed(dueDate, dueDate, to, 14, recurInterval).length;
+    case 'monthly':     return expandMonthly(dueDate, dueDate, to, recurInterval).length;
+    case 'annual':      return expandAnnual(dueDate, dueDate, to, recurInterval).length;
     default:            return 1;
   }
 }
@@ -210,21 +218,22 @@ function buildOccurrences(
   const anchor = parseDate(item.due_date);
   let dates: Date[];
 
+  const interval = Math.max(1, item.recur_interval ?? 1);
   switch (item.frequency) {
     case 'once':
       dates = anchor >= from && anchor <= to ? [anchor] : [];
       break;
     case 'weekly':
-      dates = expandFixed(anchor, from, to, 7);
+      dates = expandFixed(anchor, from, to, 7, interval);
       break;
     case 'fortnightly':
-      dates = expandFixed(anchor, from, to, 14);
+      dates = expandFixed(anchor, from, to, 14, interval);
       break;
     case 'monthly':
-      dates = expandMonthly(anchor, from, to);
+      dates = expandMonthly(anchor, from, to, interval);
       break;
     case 'annual':
-      dates = expandAnnual(anchor, from, to);
+      dates = expandAnnual(anchor, from, to, interval);
       break;
     default:
       dates = [];
@@ -311,7 +320,12 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
       const daysOverdue = Math.round(
         (seedDate.getTime() - itemDue.getTime()) / 86_400_000
       );
-      const missedCycles = countMissedCycles(item.frequency, itemDue, seedDate);
+      const missedCycles = countMissedCycles(
+        item.frequency,
+        Math.max(1, item.recur_interval ?? 1),
+        itemDue,
+        seedDate,
+      );
       const totalOwed    = item.forecast_amount * missedCycles;
       overdueItems.push({
         budgetItemId:   item.id,

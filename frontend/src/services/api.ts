@@ -71,6 +71,7 @@ export interface BudgetItem {
   category: string | null;
   type: BudgetItemType;
   frequency: Frequency;
+  recurInterval: number;
   dueDate: string;
   isVariable: boolean;
   bucket: Bucket;

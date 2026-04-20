@@ -102,6 +102,7 @@ The design has two named budget buckets — **Personal** and **Maple** (the hous
 Canonical budget envelopes synced from Notion. Each has:
 - `type`: `income | expense | transfer`
 - `frequency`: `once | weekly | fortnightly | monthly | annual`
+- `recurInterval`: integer multiplier on the frequency (e.g. `monthly × 3` = quarterly, `weekly × 4` = 4-weekly). Defaults to 1.
 - `dueDate`: ISO-8601 — the anchor date for recurring expansion
 - `isVariable`: boolean — whether the user can set an override amount
 - `bucket`: `personal | maple`
@@ -127,12 +128,12 @@ CC transactions are locked to the Personal bucket. Bank feed rows auto-guess buc
 Core server-side logic in `backend/src/services/cashflow.ts`. Accepts `from`, `to` date range:
 
 1. Load all `budget_items` from SQLite (excluding soft-deleted)
-2. Expand recurring items into individual dated entries across the range using this logic:
+2. Expand recurring items into individual dated entries across the range. The base cadence comes from `frequency`, multiplied by `recurInterval`:
    - `once` → single entry on `dueDate`
-   - `weekly` → every 7 days from `dueDate` within range
-   - `fortnightly` → every 14 days from `dueDate` within range
-   - `monthly` → same day-of-month each month (clamp to last day of month if needed — e.g. 31st Feb → 28th/29th)
-   - `annual` → same day-of-year each year within range
+   - `weekly` → every `7 × recurInterval` days from `dueDate`
+   - `fortnightly` → every `14 × recurInterval` days from `dueDate`
+   - `monthly` → every `recurInterval` months, same day-of-month (clamp to last day of month if needed — e.g. 31st Feb → 28th/29th)
+   - `annual` → every `recurInterval` years, same month+day
 3. Apply `envelope_overrides` — replace `forecastAmount` for the relevant month
 4. Apply `reconciliation` deltas — shift balance by `actual - forecast` on the reconciliation date
 5. **Bundle CC items** — items where `payment = 'Credit'` accumulate into the CC statement. They do NOT appear as individual deductions on their due dates. Instead, a single CC statement deduction lands on the CC statement due date. This is a key design behaviour — credit purchases are invisible in the balance until statement day.
