@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS budget_items (
   bucket          TEXT NOT NULL CHECK (bucket IN ('personal', 'maple')),
   payment         TEXT NOT NULL,
   forecast_amount REAL NOT NULL,
+  status          TEXT NOT NULL DEFAULT 'not started',
   deleted_at      TEXT,
   created_at      TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
@@ -45,3 +46,22 @@ CREATE TABLE IF NOT EXISTS reconciliation (
 
 CREATE INDEX IF NOT EXISTS idx_reconciliation_budget_item_id
   ON reconciliation (budget_item_id);
+
+CREATE TABLE IF NOT EXISTS transactions (
+  id                TEXT PRIMARY KEY,
+  notion_page_id    TEXT NOT NULL,
+  name              TEXT NOT NULL,
+  type              TEXT NOT NULL,
+  bucket            TEXT NOT NULL,
+  frequency         TEXT,
+  recur_interval    INTEGER,
+  expected_date     TEXT,
+  amount            REAL NOT NULL,
+  confirmed         INTEGER NOT NULL DEFAULT 0,
+  confirmed_date    TEXT,
+  created_at        TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at        TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_transactions_notion_page_id
+  ON transactions (notion_page_id);

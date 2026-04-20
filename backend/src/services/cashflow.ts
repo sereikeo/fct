@@ -28,6 +28,7 @@ function getConfig() {
 
 interface ItemRow {
   id: string;
+  notion_page_id: string;
   name: string;
   category: string | null;
   type: BudgetItemType;
@@ -266,13 +267,55 @@ function buildOccurrences(
 // Prepared statements (compiled once at module load, schema is already applied)
 // ---------------------------------------------------------------------------
 
-const stmtItems     = db.prepare('SELECT * FROM budget_items WHERE deleted_at IS NULL');
-const stmtOverrides = db.prepare('SELECT budget_item_id, period, override_amount FROM envelope_overrides');
-const stmtRecons    = db.prepare('SELECT budget_item_id, date, actual_amount, delta FROM reconciliation');
+const stmtItems        = db.prepare('SELECT * FROM budget_items WHERE deleted_at IS NULL');
+const stmtOverrides    = db.prepare('SELECT budget_item_id, period, override_amount FROM envelope_overrides');
+const stmtRecons       = db.prepare('SELECT budget_item_id, date, actual_amount, delta FROM reconciliation');
+const stmtTransactions = db.prepare('SELECT * FROM transactions');
+
+interface TxRow {
+  id: string;
+  notion_page_id: string;
+  name: string;
+  type: BudgetItemType;
+  bucket: Bucket;
+  frequency: ItemRow['frequency'] | null;
+  recur_interval: number | null;
+  expected_date: string | null;
+  amount: number;
+  confirmed: 0 | 1;
+  confirmed_date: string | null;
+}
+
+// Returns the date exactly one interval after `expected`. Mirrors the stepping
+// logic in the expansion helpers — used when starting forward projection from
+// the occurrence after the ledger's current unconfirmed row.
+function oneIntervalAhead(
+  expected: Date,
+  frequency: ItemRow['frequency'],
+  recurInterval: number,
+): Date {
+  const step = Math.max(1, recurInterval);
+  switch (frequency) {
+    case 'weekly':      return addDays(expected, 7 * step);
+    case 'fortnightly': return addDays(expected, 14 * step);
+    case 'monthly':     return clampDay(expected.getFullYear(), expected.getMonth() + step, expected.getDate());
+    case 'annual':      return clampDay(expected.getFullYear() + step, expected.getMonth(), expected.getDate());
+    case 'once':        return expected;
+    default:            return expected;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // computeCashFlow
 // ---------------------------------------------------------------------------
+
+// DayBucket entry — wraps an Occurrence with ledger state.
+interface Scheduled {
+  occ: Occurrence;
+  isConfirmed: boolean;
+  isPending: boolean;
+  isProjected: boolean;
+}
 
 export function computeCashFlow(from: string, to: string): CashFlowResult {
   const { closeDay, dueDay, balP: initBalP, balM: initBalM, openingBalanceDate } = getConfig();
@@ -286,13 +329,15 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
   // if the seed is after `from`, we have no balance information for dates
   // before the seed, so we skip them.
   const seedDate     = openingBalanceDate ? parseDate(openingBalanceDate) : fromDate;
+  const seedDateStr  = fmtDate(seedDate);
   const walkStart    = seedDate;
   const emitStart    = seedDate > fromDate ? seedDate : fromDate;
   const emitStartStr = fmtDate(emitStart);
 
-  const items     = stmtItems.all()     as ItemRow[];
-  const overrides = stmtOverrides.all() as OverrideRow[];
-  const recons    = stmtRecons.all()    as ReconRow[];
+  const items        = stmtItems.all()        as ItemRow[];
+  const overrides    = stmtOverrides.all()    as OverrideRow[];
+  const recons       = stmtRecons.all()       as ReconRow[];
+  const transactions = stmtTransactions.all() as TxRow[];
 
   // Lookup maps keyed by `${id}:${period}` and `${id}:${date}` respectively
   const overrideMap = new Map<string, number>();
@@ -305,74 +350,179 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
     reconMap.set(`${r.budget_item_id}:${r.date}`, r);
   }
 
-  // Partition into overdue (due_date < openingBalanceDate) and current.
-  // An overdue card's due_date hasn't been rolled forward by the Notion
-  // automation, so the whole card is suppressed from forward projection —
-  // surfaced separately via overdueItems / overdueTotals.
+  // Index items by notion_page_id for cross-referencing with the transaction ledger.
+  const itemByPage = new Map<string, ItemRow>();
+  for (const item of items) itemByPage.set(item.notion_page_id, item);
+
+  // Partition transactions into overdue, confirmed, and currently-pending.
+  //   - Overdue: unconfirmed AND expected_date < openingBalanceDate. Suppressed
+  //     from forward projection; surfaced via overdueItems/overdueTotals.
+  //   - Confirmed: will move the balance on its cash-effect date (confirmed_date,
+  //     or the statement due date for CC items).
+  //   - Unconfirmed non-overdue: shows in the breakdown with isPending or
+  //     isProjected, but does NOT move the balance.
   const overdueItems: OverdueItem[] = [];
   const overdueTotals: OverdueTotals = { personal: 0, maple: 0 };
-  const currentItems: ItemRow[] = [];
+  const overdueItemIds = new Set<string>();          // budget_item.id of overdue items
+  const unconfirmedExpectedByPage = new Map<string, string>(); // page id → expected_date of active ledger row
+  const confirmedTxs: TxRow[] = [];
+  const pendingTxs:   TxRow[] = [];
 
-  for (const item of items) {
-    if (!item.frequency || !item.type || !item.due_date) continue;
-    if (openingBalanceDate && item.due_date < openingBalanceDate) {
-      const itemDue = parseDate(item.due_date);
-      const daysOverdue = Math.round(
-        (seedDate.getTime() - itemDue.getTime()) / 86_400_000
-      );
-      const missedCycles = countMissedCycles(
-        item.frequency,
-        Math.max(1, item.recur_interval ?? 1),
-        itemDue,
-        seedDate,
-      );
-      const totalOwed    = item.forecast_amount * missedCycles;
+  for (const tx of transactions) {
+    if (tx.confirmed === 1) {
+      confirmedTxs.push(tx);
+      continue;
+    }
+    if (!tx.expected_date) continue;
+
+    if (openingBalanceDate && tx.expected_date < openingBalanceDate) {
+      const item = itemByPage.get(tx.notion_page_id);
+      const frequency = (tx.frequency ?? item?.frequency ?? 'once') as ItemRow['frequency'];
+      const interval  = Math.max(1, tx.recur_interval ?? item?.recur_interval ?? 1);
+      const expected  = parseDate(tx.expected_date);
+      const missedCycles = countMissedCycles(frequency, interval, expected, seedDate);
+      const totalOwed    = tx.amount * missedCycles;
+      const daysOverdue  = Math.round((seedDate.getTime() - expected.getTime()) / 86_400_000);
       overdueItems.push({
-        budgetItemId:   item.id,
-        name:           item.name,
-        bucket:         item.bucket,
-        forecastAmount: item.forecast_amount,
-        dueDate:        item.due_date,
+        budgetItemId:   item?.id ?? tx.notion_page_id,
+        name:           tx.name,
+        bucket:         tx.bucket,
+        forecastAmount: tx.amount,
+        dueDate:        tx.expected_date,
         daysOverdue,
         missedCycles,
         totalOwed,
       });
-      overdueTotals[item.bucket] += totalOwed;
+      overdueTotals[tx.bucket] += totalOwed;
+      if (item) overdueItemIds.add(item.id);
     } else {
-      currentItems.push(item);
+      pendingTxs.push(tx);
+      unconfirmedExpectedByPage.set(tx.notion_page_id, tx.expected_date);
     }
   }
 
   // Buckets: non-CC occurrences keyed by date; CC occurrences keyed by statement due date.
-  // nonCCByDate is pre-seeded for every day in [walkStart, to] so the output has no gaps.
-  const nonCCByDate = new Map<string, Occurrence[]>();
-  const ccByDueDate = new Map<string, Occurrence[]>();
+  // Pre-seeded for every day in [walkStart, to] so the output has no gaps.
+  const nonCCByDate = new Map<string, Scheduled[]>();
+  const ccByDueDate = new Map<string, Scheduled[]>();
 
   for (let d = walkStart; d <= toDate; d = addDays(d, 1)) {
     nonCCByDate.set(fmtDate(d), []);
   }
 
-  // CC items are expanded from 35 days before walkStart so that items whose
-  // occurrence date falls in the previous statement period (before walkStart)
-  // but whose CC due date lands inside [walkStart, to] are captured correctly.
-  const ccFrom = addDays(walkStart, -35);
   const walkStartStr = fmtDate(walkStart);
 
-  for (const item of currentItems) {
-    if (item.payment === 'Credit') {
-      const occs = buildOccurrences(item, ccFrom, toDate, overrideMap, reconMap);
-      for (const occ of occs) {
-        const due = fmtDate(ccDueDate(parseDate(occ.date), closeDay, dueDay));
-        if (due >= walkStartStr && due <= to) {
-          if (!ccByDueDate.has(due)) ccByDueDate.set(due, []);
-          ccByDueDate.get(due)!.push(occ);
-        }
+  function occurrenceFrom(
+    item: ItemRow | undefined,
+    tx: TxRow | null,
+    dateStr: string,
+  ): Occurrence {
+    const period   = fmtPeriod(parseDate(dateStr));
+    const override = item ? overrideMap.get(`${item.id}:${period}`) ?? null : null;
+    const recon    = item ? reconMap.get(`${item.id}:${dateStr}`) ?? null : null;
+    return {
+      date:           dateStr,
+      budgetItemId:   item?.id ?? tx?.notion_page_id ?? '',
+      name:           tx?.name ?? item?.name ?? '',
+      category:       item?.category ?? null,
+      type:           (tx?.type ?? item?.type ?? 'expense') as BudgetItemType,
+      bucket:         (tx?.bucket ?? item?.bucket ?? 'personal') as Bucket,
+      payment:        item?.payment ?? '',
+      forecastAmount: tx?.amount ?? item?.forecast_amount ?? 0,
+      overrideAmount: override,
+      actualAmount:   recon?.actual_amount ?? null,
+      delta:          recon?.delta ?? null,
+      isReconciled:   recon !== null,
+    };
+  }
+
+  function placeOnDay(
+    occ: Occurrence,
+    payment: string,
+    targetDateStr: string,
+    flags: { isConfirmed: boolean; isPending: boolean; isProjected: boolean },
+  ): void {
+    if (payment === 'Credit') {
+      const stmtDue = fmtDate(ccDueDate(parseDate(targetDateStr), closeDay, dueDay));
+      if (stmtDue >= walkStartStr && stmtDue <= to) {
+        if (!ccByDueDate.has(stmtDue)) ccByDueDate.set(stmtDue, []);
+        ccByDueDate.get(stmtDue)!.push({ occ, ...flags });
       }
     } else {
-      const occs = buildOccurrences(item, walkStart, toDate, overrideMap, reconMap);
-      for (const occ of occs) {
-        nonCCByDate.get(occ.date)?.push(occ);
+      if (targetDateStr >= walkStartStr && targetDateStr <= to) {
+        nonCCByDate.get(targetDateStr)?.push({ occ, ...flags });
       }
+    }
+  }
+
+  // 1. Confirmed transactions — move the balance on their cash-effect date.
+  for (const tx of confirmedTxs) {
+    if (!tx.confirmed_date) continue;
+    const item = itemByPage.get(tx.notion_page_id);
+    const occ = occurrenceFrom(item, tx, tx.confirmed_date);
+    placeOnDay(occ, item?.payment ?? '', tx.confirmed_date, {
+      isConfirmed: true, isPending: false, isProjected: false,
+    });
+  }
+
+  // 2. Unconfirmed, non-overdue transactions — show in breakdown, don't move balance.
+  for (const tx of pendingTxs) {
+    if (!tx.expected_date) continue;
+    const item = itemByPage.get(tx.notion_page_id);
+    const occ = occurrenceFrom(item, tx, tx.expected_date);
+    const isPending   = tx.expected_date < seedDateStr;
+    const isProjected = !isPending;
+    placeOnDay(occ, item?.payment ?? '', tx.expected_date, {
+      isConfirmed: false, isPending, isProjected,
+    });
+  }
+
+  // 3. Expansion — future occurrences beyond the ledger's currently-tracked one.
+  // Skip overdue items entirely (their whole chain is frozen in Notion until paid).
+  const ccFrom = addDays(walkStart, -35);
+
+  for (const item of items) {
+    if (!item.frequency || !item.type || !item.due_date) continue;
+    if (overdueItemIds.has(item.id)) continue;
+
+    const interval = Math.max(1, item.recur_interval ?? 1);
+
+    // If a ledger row exists, expand starting one interval past its expected_date
+    // so we don't duplicate the already-placed unconfirmed occurrence.
+    const tracked = unconfirmedExpectedByPage.get(item.notion_page_id);
+    const anchor  = tracked
+      ? oneIntervalAhead(parseDate(tracked), item.frequency, interval)
+      : parseDate(item.due_date);
+
+    if (item.frequency === 'once') {
+      // Once-off: the ledger row (if any) already covers the single occurrence.
+      // With no ledger row, place the single occurrence if it falls in range.
+      if (!tracked && anchor >= walkStart && anchor <= toDate) {
+        const dateStr = fmtDate(anchor);
+        const occ = occurrenceFrom(item, null, dateStr);
+        placeOnDay(occ, item.payment, dateStr, {
+          isConfirmed: false, isPending: false, isProjected: true,
+        });
+      }
+      continue;
+    }
+
+    const expansionFrom = item.payment === 'Credit' ? ccFrom : walkStart;
+    let dates: Date[];
+    switch (item.frequency) {
+      case 'weekly':      dates = expandFixed(anchor, expansionFrom, toDate, 7, interval); break;
+      case 'fortnightly': dates = expandFixed(anchor, expansionFrom, toDate, 14, interval); break;
+      case 'monthly':     dates = expandMonthly(anchor, expansionFrom, toDate, interval); break;
+      case 'annual':      dates = expandAnnual(anchor, expansionFrom, toDate, interval); break;
+      default:            dates = [];
+    }
+
+    for (const d of dates) {
+      const dateStr = fmtDate(d);
+      const occ = occurrenceFrom(item, null, dateStr);
+      placeOnDay(occ, item.payment, dateStr, {
+        isConfirmed: false, isPending: false, isProjected: true,
+      });
     }
   }
 
@@ -387,28 +537,32 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
     let outflow = 0;
     const breakdown: LineItem[] = [];
 
-    // Non-CC items: affect the bucket they belong to
-    for (const occ of nonCCByDate.get(dateStr) ?? []) {
-      const amount = occ.actualAmount ?? occ.overrideAmount ?? occ.forecastAmount;
+    for (const s of nonCCByDate.get(dateStr) ?? []) {
+      const amount = s.occ.actualAmount ?? s.occ.overrideAmount ?? s.occ.forecastAmount;
 
-      if (occ.type === 'income') {
-        if (occ.bucket === 'personal') balP += amount; else balM += amount;
-        inflow += amount;
-      } else {
-        // expense or transfer
-        if (occ.bucket === 'personal') balP -= amount; else balM -= amount;
+      if (s.isConfirmed) {
+        if (s.occ.type === 'income') {
+          if (s.occ.bucket === 'personal') balP += amount; else balM += amount;
+          inflow += amount;
+        } else {
+          if (s.occ.bucket === 'personal') balP -= amount; else balM -= amount;
+          outflow += amount;
+        }
+      }
+
+      breakdown.push(makeLineItem(s.occ, false, s.isPending, s.isProjected));
+    }
+
+    // CC statement deductions hit Personal only (CC is locked to Personal).
+    for (const s of ccByDueDate.get(dateStr) ?? []) {
+      const amount = s.occ.actualAmount ?? s.occ.overrideAmount ?? s.occ.forecastAmount;
+
+      if (s.isConfirmed) {
+        balP -= amount;
         outflow += amount;
       }
 
-      breakdown.push(makeLineItem(occ, false));
-    }
-
-    // CC statement deductions always hit Personal (CC is locked to Personal per spec)
-    for (const occ of ccByDueDate.get(dateStr) ?? []) {
-      const amount = occ.actualAmount ?? occ.overrideAmount ?? occ.forecastAmount;
-      balP -= amount;
-      outflow += amount;
-      breakdown.push(makeLineItem(occ, true));
+      breakdown.push(makeLineItem(s.occ, true, s.isPending, s.isProjected));
     }
 
     if (dateStr >= emitStartStr) {
@@ -438,7 +592,12 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
   return { entries, adjustedEntries, overdueItems, overdueTotals };
 }
 
-function makeLineItem(occ: Occurrence, isCC: boolean): LineItem {
+function makeLineItem(
+  occ: Occurrence,
+  isCC: boolean,
+  isPending: boolean,
+  isProjected: boolean,
+): LineItem {
   return {
     budgetItemId:   occ.budgetItemId,
     name:           occ.name,
@@ -451,6 +610,8 @@ function makeLineItem(occ: Occurrence, isCC: boolean): LineItem {
     delta:          occ.delta,
     isReconciled:   occ.isReconciled,
     isCC,
+    isPending,
+    isProjected,
     payment:        occ.payment,
   };
 }

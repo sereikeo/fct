@@ -20,5 +20,8 @@ const cols = db.pragma('table_info(budget_items)') as Array<{ name: string }>;
 if (!cols.some(c => c.name === 'recur_interval')) {
   db.exec('ALTER TABLE budget_items ADD COLUMN recur_interval INTEGER NOT NULL DEFAULT 1');
 }
+if (!cols.some(c => c.name === 'status')) {
+  db.exec("ALTER TABLE budget_items ADD COLUMN status TEXT NOT NULL DEFAULT 'not started'");
+}
 
 export default db;

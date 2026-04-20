@@ -48,6 +48,8 @@ export interface LineItem {
   delta: number | null;
   isReconciled: boolean;
   isCC: boolean;
+  isPending: boolean;    // ledger row exists, not yet confirmed, expected_date is in the past — balance NOT moved
+  isProjected: boolean;  // future occurrence (ledger row with future expected_date, or expansion beyond ledger) — balance NOT moved
   payment: string;
 }
 

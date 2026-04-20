@@ -10,7 +10,7 @@ export type SyncStatus = {
 };
 
 const EXPECTED_PROPERTIES = [
-  'Bill', 'Amount', 'Budget', 'Payment', 'Due', 'Recur Interval', 'Recur Unit', 'Tags',
+  'Bill', 'Amount', 'Budget', 'Payment', 'Due', 'Recur Interval', 'Recur Unit', 'Tags', 'Status',
 ];
 
 let syncStatus: SyncStatus = { syncedAt: null, itemCount: 0 };
@@ -40,6 +40,10 @@ function extractDate(prop: unknown): string | null {
 
 function extractMultiSelect(prop: unknown): string[] {
   return (prop as any)?.multi_select?.map((t: { name: string }) => t.name) ?? [];
+}
+
+function extractCheckbox(prop: unknown): boolean {
+  return (prop as any)?.checkbox === true;
 }
 
 // ---------------------------------------------------------------------------
@@ -95,6 +99,9 @@ function mapPageToRow(page: PageObjectResponse): Record<string, unknown> | null 
     frequency = 'monthly'; // Month(s) or unknown
   }
 
+  const done = extractCheckbox(p['Status']);
+  const status = done ? 'done' : 'not started';
+
   return {
     notion_page_id: page.id,
     name,
@@ -107,6 +114,7 @@ function mapPageToRow(page: PageObjectResponse): Record<string, unknown> | null 
     bucket,
     payment: extractSelect(p['Payment']) ?? 'Direct Debit',
     forecast_amount: extractNumber(p['Amount']),
+    status,
   };
 }
 
@@ -120,10 +128,10 @@ function mapPageToRow(page: PageObjectResponse): Record<string, unknown> | null 
 const upsertStmt = db.prepare(`
   INSERT INTO budget_items (
     id, notion_page_id, name, category, type, frequency, recur_interval,
-    due_date, is_variable, bucket, payment, forecast_amount, deleted_at
+    due_date, is_variable, bucket, payment, forecast_amount, status, deleted_at
   ) VALUES (
     @id, @notion_page_id, @name, @category, @type, @frequency, @recur_interval,
-    @due_date, @is_variable, @bucket, @payment, @forecast_amount, NULL
+    @due_date, @is_variable, @bucket, @payment, @forecast_amount, @status, NULL
   )
   ON CONFLICT(notion_page_id) DO UPDATE SET
     name            = excluded.name,
@@ -136,6 +144,7 @@ const upsertStmt = db.prepare(`
     bucket          = excluded.bucket,
     payment         = excluded.payment,
     forecast_amount = excluded.forecast_amount,
+    status          = excluded.status,
     deleted_at      = NULL,
     updated_at      = datetime('now')
 `);
@@ -158,6 +167,154 @@ const softDeleteOneStmt = db.prepare(`
 const countActiveStmt = db.prepare(
   `SELECT COUNT(*) AS count FROM budget_items WHERE deleted_at IS NULL`
 );
+
+// ---------------------------------------------------------------------------
+// Transaction ledger — detects confirmations by comparing Notion's current
+// state against what FCT last recorded.
+// ---------------------------------------------------------------------------
+
+interface TxRow {
+  id: string;
+  notion_page_id: string;
+  frequency: string | null;
+  recur_interval: number | null;
+  expected_date: string | null;
+}
+
+const stmtGetUnconfirmedTx = db.prepare(
+  'SELECT id, notion_page_id, frequency, recur_interval, expected_date FROM transactions WHERE notion_page_id = ? AND confirmed = 0 LIMIT 1'
+);
+
+const stmtInsertTx = db.prepare(`
+  INSERT INTO transactions (
+    id, notion_page_id, name, type, bucket, frequency, recur_interval,
+    expected_date, amount, confirmed, confirmed_date
+  ) VALUES (
+    @id, @notion_page_id, @name, @type, @bucket, @frequency, @recur_interval,
+    @expected_date, @amount, 0, NULL
+  )
+`);
+
+const stmtConfirmTx = db.prepare(`
+  UPDATE transactions
+  SET    confirmed = 1, confirmed_date = date('now'), updated_at = datetime('now')
+  WHERE  id = ?
+`);
+
+const stmtRescheduleTx = db.prepare(`
+  UPDATE transactions
+  SET    expected_date = ?, updated_at = datetime('now')
+  WHERE  id = ?
+`);
+
+function parseIsoDate(s: string): Date {
+  const [y, m, d] = s.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
+function clampLastDay(year: number, month: number, day: number): Date {
+  const last = new Date(year, month + 1, 0).getDate();
+  return new Date(year, month, Math.min(day, last));
+}
+
+// Returns the date exactly one interval after `expected` for the given frequency.
+function oneIntervalAhead(expected: Date, frequency: string | null, recurInterval: number | null): Date {
+  const step = Math.max(1, recurInterval ?? 1);
+  switch (frequency) {
+    case 'weekly':
+      return new Date(expected.getFullYear(), expected.getMonth(), expected.getDate() + 7 * step);
+    case 'fortnightly':
+      return new Date(expected.getFullYear(), expected.getMonth(), expected.getDate() + 14 * step);
+    case 'monthly':
+      return clampLastDay(expected.getFullYear(), expected.getMonth() + step, expected.getDate());
+    case 'annual':
+      return clampLastDay(expected.getFullYear() + step, expected.getMonth(), expected.getDate());
+    default:
+      return expected;
+  }
+}
+
+function isOnceOff(frequency: string | null | undefined, recurInterval: number | null | undefined): boolean {
+  return !frequency || frequency === 'once' || !recurInterval || recurInterval === 0;
+}
+
+function updateTransactionLedger(row: {
+  notion_page_id: string;
+  name: string;
+  type: string;
+  bucket: string;
+  frequency: string;
+  recur_interval: number;
+  due_date: string | null;
+  forecast_amount: number;
+  status: string;
+}): void {
+  if (!row.due_date) return;
+
+  const existing = stmtGetUnconfirmedTx.get(row.notion_page_id) as TxRow | undefined;
+  const isOnce = isOnceOff(row.frequency, row.recur_interval);
+
+  if (isOnce) {
+    if (!existing) {
+      stmtInsertTx.run({
+        id:             uuidv4(),
+        notion_page_id: row.notion_page_id,
+        name:           row.name,
+        type:           row.type,
+        bucket:         row.bucket,
+        frequency:      row.frequency || null,
+        recur_interval: row.recur_interval || null,
+        expected_date:  row.due_date,
+        amount:         row.forecast_amount,
+      });
+    } else if (row.status === 'done') {
+      stmtConfirmTx.run(existing.id);
+    }
+    return;
+  }
+
+  // Recurring: compare due_date against the ledger's expected_date.
+  if (!existing) {
+    stmtInsertTx.run({
+      id:             uuidv4(),
+      notion_page_id: row.notion_page_id,
+      name:           row.name,
+      type:           row.type,
+      bucket:         row.bucket,
+      frequency:      row.frequency,
+      recur_interval: row.recur_interval,
+      expected_date:  row.due_date,
+      amount:         row.forecast_amount,
+    });
+    return;
+  }
+
+  if (!existing.expected_date) return;
+  if (existing.expected_date === row.due_date) return; // unchanged
+
+  const expected    = parseIsoDate(existing.expected_date);
+  const currentDue  = parseIsoDate(row.due_date);
+  const nextCycle   = oneIntervalAhead(expected, existing.frequency, existing.recur_interval);
+
+  if (currentDue >= nextCycle) {
+    // Notion advanced by ≥ one full interval → previous cycle was paid.
+    stmtConfirmTx.run(existing.id);
+    stmtInsertTx.run({
+      id:             uuidv4(),
+      notion_page_id: row.notion_page_id,
+      name:           row.name,
+      type:           row.type,
+      bucket:         row.bucket,
+      frequency:      row.frequency,
+      recur_interval: row.recur_interval,
+      expected_date:  row.due_date,
+      amount:         row.forecast_amount,
+    });
+  } else {
+    // Rescheduled — keep unconfirmed, just bump expected_date.
+    stmtRescheduleTx.run(row.due_date, existing.id);
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Notion API fetch (paginated, rate-limited)
@@ -233,6 +390,8 @@ export async function runSync(full = false): Promise<void> {
     const returnedIds: string[] = [];
 
     const doSync = db.transaction(() => {
+      const mapped: Array<ReturnType<typeof mapPageToRow>> = [];
+
       for (const page of pages) {
         if (page.archived) {
           softDeleteOneStmt.run(page.id);
@@ -244,6 +403,15 @@ export async function runSync(full = false): Promise<void> {
 
         returnedIds.push(page.id);
         upsertStmt.run({ id: uuidv4(), ...row });
+        mapped.push(row);
+      }
+
+      // Second pass: update transactions ledger for each mapped row. Runs in
+      // the same transaction so a failure rolls back both the upsert and the
+      // ledger writes.
+      for (const row of mapped) {
+        if (!row) continue;
+        updateTransactionLedger(row as Parameters<typeof updateTransactionLedger>[0]);
       }
 
       // Only soft-delete on a full sync and only when we have mapped rows —
