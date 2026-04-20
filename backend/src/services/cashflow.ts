@@ -140,17 +140,18 @@ function expandAnnual(anchor: Date, from: Date, to: Date, recurInterval: number)
   return dates;
 }
 
-// Counts occurrences from dueDate (inclusive) up to openingDate (exclusive) —
-// i.e. how many payment cycles were missed before the seed date. Reuses the
-// same expansion logic as forward projection so the cadence stays consistent.
+// Counts occurrences from dueDate (inclusive) up to openingDate (inclusive) —
+// i.e. how many payment cycles are owed. A bill due today but not yet ack'd
+// counts as one cycle; a bill three months late counts as however many
+// anchored cycles have landed on or before today.
 function countMissedCycles(
   frequency: ItemRow['frequency'],
   recurInterval: number,
   dueDate: Date,
   openingDate: Date,
 ): number {
-  if (dueDate >= openingDate) return 0;
-  const to = addDays(openingDate, -1);
+  if (dueDate > openingDate) return 0;
+  const to = openingDate;
   switch (frequency) {
     case 'once':        return 1;
     case 'weekly':      return expandFixed(dueDate, dueDate, to, 7, recurInterval).length;
@@ -329,7 +330,6 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
   // if the seed is after `from`, we have no balance information for dates
   // before the seed, so we skip them.
   const seedDate     = openingBalanceDate ? parseDate(openingBalanceDate) : fromDate;
-  const seedDateStr  = fmtDate(seedDate);
   const walkStart    = seedDate;
   const emitStart    = seedDate > fromDate ? seedDate : fromDate;
   const emitStartStr = fmtDate(emitStart);
@@ -354,19 +354,23 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
   const itemByPage = new Map<string, ItemRow>();
   for (const item of items) itemByPage.set(item.notion_page_id, item);
 
-  // Partition transactions into overdue, confirmed, and currently-pending.
-  //   - Overdue: unconfirmed AND expected_date < openingBalanceDate. Suppressed
-  //     from forward projection; surfaced via overdueItems/overdueTotals.
-  //   - Confirmed: will move the balance on its cash-effect date (confirmed_date,
+  // Partition transactions into overdue, confirmed, and projected.
+  //   - Overdue: unconfirmed AND expected_date <= openingBalanceDate. The day
+  //     has arrived (or passed) without user acknowledgement. Surfaced via
+  //     overdueItems/overdueTotals AND placed in the breakdown on expected_date
+  //     so today's awaiting-ack rows still appear in the chart-day view.
+  //     Balance is NOT moved (the real debit/credit hasn't happened yet).
+  //   - Confirmed: moves the balance on its cash-effect date (confirmed_date,
   //     or the statement due date for CC items).
-  //   - Unconfirmed non-overdue: shows in the breakdown with isPending or
-  //     isProjected, but does NOT move the balance.
+  //   - Projected: unconfirmed AND expected_date > openingBalanceDate. Genuine
+  //     forecast — moves the balance as if paid on time.
   const overdueItems: OverdueItem[] = [];
   const overdueTotals: OverdueTotals = { personal: 0, maple: 0 };
   const overdueItemIds = new Set<string>();          // budget_item.id of overdue items
   const unconfirmedExpectedByPage = new Map<string, string>(); // page id → expected_date of active ledger row
-  const confirmedTxs: TxRow[] = [];
-  const pendingTxs:   TxRow[] = [];
+  const confirmedTxs:  TxRow[] = [];
+  const projectedTxs:  TxRow[] = [];
+  const overdueTxs:    TxRow[] = [];
 
   for (const tx of transactions) {
     if (tx.confirmed === 1) {
@@ -375,7 +379,7 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
     }
     if (!tx.expected_date) continue;
 
-    if (openingBalanceDate && tx.expected_date < openingBalanceDate) {
+    if (openingBalanceDate && tx.expected_date <= openingBalanceDate) {
       const item = itemByPage.get(tx.notion_page_id);
       const frequency = (tx.frequency ?? item?.frequency ?? 'once') as ItemRow['frequency'];
       const interval  = Math.max(1, tx.recur_interval ?? item?.recur_interval ?? 1);
@@ -395,8 +399,9 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
       });
       overdueTotals[tx.bucket] += totalOwed;
       if (item) overdueItemIds.add(item.id);
+      overdueTxs.push(tx);
     } else {
-      pendingTxs.push(tx);
+      projectedTxs.push(tx);
       unconfirmedExpectedByPage.set(tx.notion_page_id, tx.expected_date);
     }
   }
@@ -465,19 +470,31 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
     });
   }
 
-  // 2. Unconfirmed, non-overdue transactions — show in breakdown, don't move balance.
-  for (const tx of pendingTxs) {
+  // 2. Projected (future, unconfirmed) transactions — move the balance on
+  //    expected_date as if paid on time.
+  for (const tx of projectedTxs) {
     if (!tx.expected_date) continue;
     const item = itemByPage.get(tx.notion_page_id);
     const occ = occurrenceFrom(item, tx, tx.expected_date);
-    const isPending   = tx.expected_date < seedDateStr;
-    const isProjected = !isPending;
     placeOnDay(occ, item?.payment ?? '', tx.expected_date, {
-      isConfirmed: false, isPending, isProjected,
+      isConfirmed: false, isPending: false, isProjected: true,
     });
   }
 
-  // 3. Expansion — future occurrences beyond the ledger's currently-tracked one.
+  // 3. Overdue transactions — show in breakdown on expected_date (so today's
+  //    awaiting-ack rows appear in the chart day), but do NOT move the
+  //    balance. Strictly-past overdue (expected_date before walkStart) won't
+  //    land via placeOnDay's range check and stay only in the overdue panel.
+  for (const tx of overdueTxs) {
+    if (!tx.expected_date) continue;
+    const item = itemByPage.get(tx.notion_page_id);
+    const occ = occurrenceFrom(item, tx, tx.expected_date);
+    placeOnDay(occ, item?.payment ?? '', tx.expected_date, {
+      isConfirmed: false, isPending: true, isProjected: false,
+    });
+  }
+
+  // 4. Expansion — future occurrences beyond the ledger's currently-tracked one.
   // Skip overdue items entirely (their whole chain is frozen in Notion until paid).
   const ccFrom = addDays(walkStart, -35);
 
