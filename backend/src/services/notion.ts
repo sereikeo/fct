@@ -219,10 +219,19 @@ const stmtConfirmTx = db.prepare(`
   WHERE  id = ?
 `);
 
-const stmtRescheduleTx = db.prepare(`
+// Syncs an unconfirmed ledger row with the latest Notion state. Confirmed
+// rows are historical snapshots and are never touched here.
+const stmtSyncUnconfirmedTx = db.prepare(`
   UPDATE transactions
-  SET    expected_date = ?, updated_at = datetime('now')
-  WHERE  id = ?
+  SET    name           = @name,
+         type           = @type,
+         bucket         = @bucket,
+         frequency      = @frequency,
+         recur_interval = @recur_interval,
+         expected_date  = @expected_date,
+         amount         = @amount,
+         updated_at     = datetime('now')
+  WHERE  id = @id AND confirmed = 0
 `);
 
 function parseIsoDate(s: string): Date {
@@ -272,66 +281,66 @@ function updateTransactionLedger(row: {
   const existing = stmtGetUnconfirmedTx.get(row.notion_page_id) as TxRow | undefined;
   const isOnce = isOnceOff(row.frequency, row.recur_interval);
 
+  // Mutable fields we want the active unconfirmed row to mirror from Notion
+  // (amount, name, category, due-date shifts — anything the user can edit
+  // after we first created the ledger row).
+  const syncArgs = () => ({
+    id:             existing!.id,
+    name:           row.name,
+    type:           row.type,
+    bucket:         row.bucket,
+    frequency:      row.frequency || null,
+    recur_interval: row.recur_interval || null,
+    expected_date:  row.due_date,
+    amount:         row.forecast_amount,
+  });
+
+  const insertArgs = () => ({
+    id:             uuidv4(),
+    notion_page_id: row.notion_page_id,
+    name:           row.name,
+    type:           row.type,
+    bucket:         row.bucket,
+    frequency:      row.frequency || null,
+    recur_interval: row.recur_interval || null,
+    expected_date:  row.due_date,
+    amount:         row.forecast_amount,
+  });
+
   if (isOnce) {
     if (!existing) {
-      stmtInsertTx.run({
-        id:             uuidv4(),
-        notion_page_id: row.notion_page_id,
-        name:           row.name,
-        type:           row.type,
-        bucket:         row.bucket,
-        frequency:      row.frequency || null,
-        recur_interval: row.recur_interval || null,
-        expected_date:  row.due_date,
-        amount:         row.forecast_amount,
-      });
+      stmtInsertTx.run(insertArgs());
     } else if (row.status === 'done') {
       stmtConfirmTx.run(existing.id);
+    } else {
+      stmtSyncUnconfirmedTx.run(syncArgs());
     }
     return;
   }
 
   // Recurring: compare due_date against the ledger's expected_date.
   if (!existing) {
-    stmtInsertTx.run({
-      id:             uuidv4(),
-      notion_page_id: row.notion_page_id,
-      name:           row.name,
-      type:           row.type,
-      bucket:         row.bucket,
-      frequency:      row.frequency,
-      recur_interval: row.recur_interval,
-      expected_date:  row.due_date,
-      amount:         row.forecast_amount,
-    });
+    stmtInsertTx.run(insertArgs());
     return;
   }
 
   if (!existing.expected_date) return;
-  if (existing.expected_date === row.due_date) return; // unchanged
 
-  const expected    = parseIsoDate(existing.expected_date);
-  const currentDue  = parseIsoDate(row.due_date);
-  const nextCycle   = oneIntervalAhead(expected, existing.frequency, existing.recur_interval);
+  const expected   = parseIsoDate(existing.expected_date);
+  const currentDue = parseIsoDate(row.due_date);
+  const nextCycle  = oneIntervalAhead(expected, existing.frequency, existing.recur_interval);
 
   if (currentDue >= nextCycle) {
     // Notion advanced by ≥ one full interval → previous cycle was paid.
     stmtConfirmTx.run(existing.id);
-    stmtInsertTx.run({
-      id:             uuidv4(),
-      notion_page_id: row.notion_page_id,
-      name:           row.name,
-      type:           row.type,
-      bucket:         row.bucket,
-      frequency:      row.frequency,
-      recur_interval: row.recur_interval,
-      expected_date:  row.due_date,
-      amount:         row.forecast_amount,
-    });
-  } else {
-    // Rescheduled — keep unconfirmed, just bump expected_date.
-    stmtRescheduleTx.run(row.due_date, existing.id);
+    stmtInsertTx.run(insertArgs());
+    return;
   }
+
+  // Unchanged or short reschedule — keep the row, sync every mutable field
+  // so a post-creation Notion edit (amount, name, small date bump) is
+  // reflected in the ledger.
+  stmtSyncUnconfirmedTx.run(syncArgs());
 }
 
 // ---------------------------------------------------------------------------
