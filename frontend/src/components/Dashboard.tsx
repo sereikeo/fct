@@ -216,6 +216,11 @@ function LedgerCard({
                   </td>
                   <td>
                     <div className="bill-name">{o.name}</div>
+                    {o.missedCycles > 1 && (
+                      <div className="bill-sub">
+                        {o.missedCycles} cycles × A${o.forecastAmount.toFixed(2)}
+                      </div>
+                    )}
                   </td>
                   <td>
                     <span className={`tag ${o.bucket}`}>
@@ -225,7 +230,7 @@ function LedgerCard({
                   </td>
                   <td style={{ color: 'var(--mute)' }}>—</td>
                   <td className="num" style={{ color: 'var(--accent)', fontWeight: 600 }}>
-                    −A${o.forecastAmount.toFixed(2)}
+                    −A${o.totalOwed.toFixed(2)}
                   </td>
                   <td>
                     <span className="reco-pill overdue">

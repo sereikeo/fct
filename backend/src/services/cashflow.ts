@@ -132,6 +132,26 @@ function expandAnnual(anchor: Date, from: Date, to: Date): Date[] {
   return dates;
 }
 
+// Counts occurrences from dueDate (inclusive) up to openingDate (exclusive) —
+// i.e. how many payment cycles were missed before the seed date. Reuses the
+// same expansion logic as forward projection so the cadence stays consistent.
+function countMissedCycles(
+  frequency: ItemRow['frequency'],
+  dueDate: Date,
+  openingDate: Date,
+): number {
+  if (dueDate >= openingDate) return 0;
+  const to = addDays(openingDate, -1);
+  switch (frequency) {
+    case 'once':        return 1;
+    case 'weekly':      return expandFixed(dueDate, dueDate, to, 7).length;
+    case 'fortnightly': return expandFixed(dueDate, dueDate, to, 14).length;
+    case 'monthly':     return expandMonthly(dueDate, dueDate, to).length;
+    case 'annual':      return expandAnnual(dueDate, dueDate, to).length;
+    default:            return 1;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // CC statement due date
 //
@@ -287,9 +307,12 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
   for (const item of items) {
     if (!item.frequency || !item.type || !item.due_date) continue;
     if (openingBalanceDate && item.due_date < openingBalanceDate) {
+      const itemDue = parseDate(item.due_date);
       const daysOverdue = Math.round(
-        (seedDate.getTime() - parseDate(item.due_date).getTime()) / 86_400_000
+        (seedDate.getTime() - itemDue.getTime()) / 86_400_000
       );
+      const missedCycles = countMissedCycles(item.frequency, itemDue, seedDate);
+      const totalOwed    = item.forecast_amount * missedCycles;
       overdueItems.push({
         budgetItemId:   item.id,
         name:           item.name,
@@ -297,8 +320,10 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
         forecastAmount: item.forecast_amount,
         dueDate:        item.due_date,
         daysOverdue,
+        missedCycles,
+        totalOwed,
       });
-      overdueTotals[item.bucket] += item.forecast_amount;
+      overdueTotals[item.bucket] += totalOwed;
     } else {
       currentItems.push(item);
     }

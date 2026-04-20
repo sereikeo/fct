@@ -64,9 +64,11 @@ export interface OverdueItem {
   budgetItemId: string;
   name: string;
   bucket: Bucket;
-  forecastAmount: number;
+  forecastAmount: number;   // per-cycle amount
   dueDate: string;
   daysOverdue: number;
+  missedCycles: number;     // occurrences from dueDate up to FCT_OPENING_BALANCE_DATE
+  totalOwed: number;        // forecastAmount * missedCycles — the real liability
 }
 
 export interface OverdueTotals {

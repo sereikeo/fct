@@ -136,7 +136,7 @@ Core server-side logic in `backend/src/services/cashflow.ts`. Accepts `from`, `t
 3. Apply `envelope_overrides` — replace `forecastAmount` for the relevant month
 4. Apply `reconciliation` deltas — shift balance by `actual - forecast` on the reconciliation date
 5. **Bundle CC items** — items where `payment = 'Credit'` accumulate into the CC statement. They do NOT appear as individual deductions on their due dates. Instead, a single CC statement deduction lands on the CC statement due date. This is a key design behaviour — credit purchases are invisible in the balance until statement day.
-6. **Partition overdue items** — when `FCT_OPENING_BALANCE_DATE` is set, any budget item with `due_date < FCT_OPENING_BALANCE_DATE` is treated as overdue (Notion's automation advances the `due_date` only when a bill is marked paid, so a past date means unpaid). Overdue cards are suppressed from the forward projection entirely and surfaced in a separate `overdueItems` array with per-bucket totals.
+6. **Partition overdue items** — when `FCT_OPENING_BALANCE_DATE` is set, any budget item with `due_date < FCT_OPENING_BALANCE_DATE` is treated as overdue (Notion's automation advances the `due_date` only when a bill is marked paid, so a past date means unpaid). For each overdue item, the engine steps forward from `due_date` in the item's frequency cadence and counts occurrences before `FCT_OPENING_BALANCE_DATE` — that count is `missedCycles`, and `totalOwed = forecastAmount × missedCycles` is the real liability. Overdue cards are suppressed from the forward projection entirely and surfaced in a separate `overdueItems` array; `overdueTotals` per bucket sum `totalOwed`.
 7. Compute running balance day-by-day. Seed is valid at `FCT_OPENING_BALANCE_DATE` (or `from` if unset). If the seed date is before `from`, the engine walks seed → from first to arrive at the correct seed, emitting entries only within `[from, to]`.
 8. **adjustedEntries** — the same series as `entries` but with `overdueTotals` deducted from the seed per bucket, so the frontend can toggle between "forecast as-is" and "if overdue bills were paid today".
 
@@ -169,9 +169,11 @@ interface OverdueItem {
   budgetItemId: string
   name: string
   bucket: 'personal' | 'maple'
-  forecastAmount: number
+  forecastAmount: number     // per-cycle amount
   dueDate: string            // ISO-8601
   daysOverdue: number        // as of FCT_OPENING_BALANCE_DATE
+  missedCycles: number       // occurrences from dueDate up to FCT_OPENING_BALANCE_DATE
+  totalOwed: number          // forecastAmount * missedCycles — the real liability
 }
 
 interface CashFlowResult {
