@@ -364,13 +364,17 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
   //     or the statement due date for CC items).
   //   - Projected: unconfirmed AND expected_date > openingBalanceDate. Genuine
   //     forecast — moves the balance as if paid on time.
+  //
+  // Future cycles are still forecast for overdue items — the card being
+  // overdue only means the *current* cycle hasn't been ack'd, not that the
+  // whole schedule is frozen. Expansion uses oneIntervalAhead(tracked) for
+  // both overdue and projected rows.
   const overdueItems: OverdueItem[] = [];
   const overdueTotals: OverdueTotals = {
     personal: { owedIn: 0, owedOut: 0 },
     maple:    { owedIn: 0, owedOut: 0 },
   };
-  const overdueItemIds = new Set<string>();          // budget_item.id of overdue items
-  const unconfirmedExpectedByPage = new Map<string, string>(); // page id → expected_date of active ledger row
+  const unconfirmedExpectedByPage = new Map<string, string>(); // page id → expected_date of active ledger row (overdue or projected)
   const confirmedTxs:  TxRow[] = [];
   const projectedTxs:  TxRow[] = [];
   const overdueTxs:    TxRow[] = [];
@@ -381,6 +385,8 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
       continue;
     }
     if (!tx.expected_date) continue;
+
+    unconfirmedExpectedByPage.set(tx.notion_page_id, tx.expected_date);
 
     if (openingBalanceDate && tx.expected_date <= openingBalanceDate) {
       const item = itemByPage.get(tx.notion_page_id);
@@ -403,11 +409,9 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
       });
       if (tx.type === 'income') overdueTotals[tx.bucket].owedIn  += totalOwed;
       else                       overdueTotals[tx.bucket].owedOut += totalOwed;
-      if (item) overdueItemIds.add(item.id);
       overdueTxs.push(tx);
     } else {
       projectedTxs.push(tx);
-      unconfirmedExpectedByPage.set(tx.notion_page_id, tx.expected_date);
     }
   }
 
@@ -500,12 +504,12 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
   }
 
   // 4. Expansion — future occurrences beyond the ledger's currently-tracked one.
-  // Skip overdue items entirely (their whole chain is frozen in Notion until paid).
+  // Overdue items still get their future cycles forecast: only the current
+  // cycle is awaiting ack; subsequent ones are expected on schedule.
   const ccFrom = addDays(walkStart, -35);
 
   for (const item of items) {
     if (!item.frequency || !item.type || !item.due_date) continue;
-    if (overdueItemIds.has(item.id)) continue;
 
     const interval = Math.max(1, item.recur_interval ?? 1);
 
