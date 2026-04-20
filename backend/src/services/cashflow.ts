@@ -540,7 +540,10 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
     for (const s of nonCCByDate.get(dateStr) ?? []) {
       const amount = s.occ.actualAmount ?? s.occ.overrideAmount ?? s.occ.forecastAmount;
 
-      if (s.isConfirmed) {
+      // Confirmed (historical) and projected (future forecast) both move the
+      // balance. Pending (past unconfirmed) is surfaced separately via
+      // overdueItems and must not be double-counted here.
+      if (s.isConfirmed || s.isProjected) {
         if (s.occ.type === 'income') {
           if (s.occ.bucket === 'personal') balP += amount; else balM += amount;
           inflow += amount;
@@ -557,7 +560,7 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
     for (const s of ccByDueDate.get(dateStr) ?? []) {
       const amount = s.occ.actualAmount ?? s.occ.overrideAmount ?? s.occ.forecastAmount;
 
-      if (s.isConfirmed) {
+      if (s.isConfirmed || s.isProjected) {
         balP -= amount;
         outflow += amount;
       }
