@@ -35,6 +35,7 @@ interface ItemRow {
   frequency: 'once' | 'weekly' | 'fortnightly' | 'monthly' | 'annual';
   recur_interval: number;
   due_date: string;
+  is_variable: number;
   bucket: Bucket;
   payment: string;
   forecast_amount: number;
@@ -272,6 +273,13 @@ const stmtItems        = db.prepare('SELECT * FROM budget_items WHERE deleted_at
 const stmtOverrides    = db.prepare('SELECT budget_item_id, period, override_amount FROM envelope_overrides');
 const stmtRecons       = db.prepare('SELECT budget_item_id, date, actual_amount, delta FROM reconciliation');
 const stmtTransactions = db.prepare('SELECT * FROM transactions');
+const stmtSpendLog     = db.prepare(`
+  SELECT sl.budget_item_id, sl.date, sl.amount
+  FROM   spend_log sl
+  JOIN   budget_items bi ON bi.id = sl.budget_item_id
+  WHERE  bi.deleted_at IS NULL
+  ORDER  BY sl.date
+`);
 
 interface TxRow {
   id: string;
@@ -339,6 +347,19 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
   const recons       = stmtRecons.all()       as ReconRow[];
   const transactions = stmtTransactions.all() as TxRow[];
 
+  interface SpendLogRow { budget_item_id: string; date: string; amount: number; }
+  const spendRows = stmtSpendLog.all() as SpendLogRow[];
+  const spendByItemPeriod = new Map<string, SpendLogRow[]>();
+  for (const s of spendRows) {
+    const key = `${s.budget_item_id}:${s.date.slice(0, 7)}`;
+    if (!spendByItemPeriod.has(key)) spendByItemPeriod.set(key, []);
+    spendByItemPeriod.get(key)!.push(s);
+  }
+
+  const todayDate    = new Date();
+  const todayStr     = fmtDate(todayDate);
+  const currentPeriod = fmtPeriod(todayDate);
+
   // Lookup maps keyed by `${id}:${period}` and `${id}:${date}` respectively
   const overrideMap = new Map<string, number>();
   for (const o of overrides) {
@@ -380,6 +401,11 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
   const overdueTxs:    TxRow[] = [];
 
   for (const tx of transactions) {
+    // Envelope items (is_variable) bypass the transaction path entirely —
+    // their spend entries are placed directly from spend_log below.
+    const txItem = itemByPage.get(tx.notion_page_id);
+    if (txItem?.is_variable) continue;
+
     if (tx.confirmed === 1) {
       confirmedTxs.push(tx);
       continue;
@@ -520,6 +546,7 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
   const ccFrom = addDays(walkStart, -35);
 
   for (const item of items) {
+    if (item.is_variable) continue; // handled in envelope pass below
     if (!item.frequency || !item.type || !item.due_date) continue;
 
     const interval = Math.max(1, item.recur_interval ?? 1);
@@ -560,6 +587,80 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
       placeOnDay(occ, item.payment, dateStr, {
         isConfirmed: false, isPending: false, isProjected: true,
       });
+    }
+  }
+
+  // 5. Envelope items (is_variable) — individual spend entries as actuals on
+  //    their real dates, plus a projected "remaining budget" occurrence on the
+  //    period's occurrence date (or end-of-month if that date has already passed).
+  function lastDayOfMonth(d: Date): Date {
+    return new Date(d.getFullYear(), d.getMonth() + 1, 0);
+  }
+
+  for (const item of items) {
+    if (!item.is_variable || !item.frequency || !item.due_date) continue;
+
+    const interval = Math.max(1, item.recur_interval ?? 1);
+    const anchor   = parseDate(item.due_date);
+    let occDates: Date[];
+    switch (item.frequency) {
+      case 'weekly':      occDates = expandFixed(anchor, walkStart, toDate, 7, interval); break;
+      case 'fortnightly': occDates = expandFixed(anchor, walkStart, toDate, 14, interval); break;
+      case 'monthly':     occDates = expandMonthly(anchor, walkStart, toDate, interval); break;
+      case 'annual':      occDates = expandAnnual(anchor, walkStart, toDate, interval); break;
+      case 'once':        occDates = anchor >= walkStart && anchor <= toDate ? [anchor] : []; break;
+      default:            occDates = [];
+    }
+
+    const periodsSeen = new Set<string>();
+
+    for (const occDate of occDates) {
+      const period = fmtPeriod(occDate);
+      if (periodsSeen.has(period)) continue;
+      periodsSeen.add(period);
+
+      const entries    = spendByItemPeriod.get(`${item.id}:${period}`) ?? [];
+      const totalSpent = entries.reduce((t, e) => t + e.amount, 0);
+      const cap        = overrideMap.get(`${item.id}:${period}`) ?? item.forecast_amount;
+      const remaining  = Math.max(0, cap - totalSpent);
+
+      // Place each actual spend entry on its real date.
+      for (const entry of entries) {
+        if (entry.date < walkStartStr || entry.date > to) continue;
+        placeOnDay(
+          {
+            date: entry.date, budgetItemId: item.id, name: item.name,
+            category: item.category, type: item.type, bucket: item.bucket,
+            payment: item.payment, forecastAmount: 0,
+            overrideAmount: null, actualAmount: entry.amount,
+            delta: null, isReconciled: true,
+          },
+          item.payment, entry.date,
+          { isConfirmed: true, isPending: false, isProjected: false },
+        );
+      }
+
+      // Project remaining budget only for the current and future periods.
+      if (remaining > 0 && period >= currentPeriod) {
+        const occDateStr   = fmtDate(occDate);
+        const remainingDate = (period === currentPeriod && occDateStr < todayStr)
+          ? fmtDate(lastDayOfMonth(todayDate))
+          : occDateStr;
+
+        if (remainingDate >= walkStartStr && remainingDate <= to) {
+          placeOnDay(
+            {
+              date: remainingDate, budgetItemId: item.id, name: item.name,
+              category: item.category, type: item.type, bucket: item.bucket,
+              payment: item.payment, forecastAmount: remaining,
+              overrideAmount: null, actualAmount: null,
+              delta: null, isReconciled: false,
+            },
+            item.payment, remainingDate,
+            { isConfirmed: false, isPending: false, isProjected: true },
+          );
+        }
+      }
     }
   }
 
