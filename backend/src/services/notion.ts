@@ -68,6 +68,7 @@ function mapPageToRow(page: PageObjectResponse): Record<string, unknown> | null 
   if (tags.some(t => t.toLowerCase() === 'excluded')) return null;
   const bucket = tags.some(t => t.toLowerCase().includes('maple')) ? 'maple' : 'personal';
   const isVariable = tags.some(t => t.toLowerCase().includes('variable')) ? 1 : 0;
+  const isEnvelope = tags.some(t => t.toLowerCase().includes('envelope')) ? 1 : 0;
 
   // Budget select values may be composite like 'Maple-Income' or 'Maple-Bills'.
   // All Notion amounts are positive — type determines the sign in the engine.
@@ -97,6 +98,7 @@ function mapPageToRow(page: PageObjectResponse): Record<string, unknown> | null 
     type,
     due_date: extractDate(p['Due']) ?? null,
     is_variable: isVariable,
+    is_envelope: isEnvelope,
     bucket,
     payment: extractSelect(p['Payment']) ?? 'Direct Debit',
     forecast_amount: extractNumber(p['Amount']),
@@ -150,10 +152,10 @@ function mapPageToRow(page: PageObjectResponse): Record<string, unknown> | null 
 const upsertStmt = db.prepare(`
   INSERT INTO budget_items (
     id, notion_page_id, name, category, type, frequency, recur_interval,
-    due_date, is_variable, bucket, payment, forecast_amount, status, deleted_at
+    due_date, is_variable, is_envelope, bucket, payment, forecast_amount, status, deleted_at
   ) VALUES (
     @id, @notion_page_id, @name, @category, @type, @frequency, @recur_interval,
-    @due_date, @is_variable, @bucket, @payment, @forecast_amount, @status, NULL
+    @due_date, @is_variable, @is_envelope, @bucket, @payment, @forecast_amount, @status, NULL
   )
   ON CONFLICT(notion_page_id) DO UPDATE SET
     name            = excluded.name,
@@ -163,6 +165,7 @@ const upsertStmt = db.prepare(`
     recur_interval  = excluded.recur_interval,
     due_date        = excluded.due_date,
     is_variable     = excluded.is_variable,
+    is_envelope     = excluded.is_envelope,
     bucket          = excluded.bucket,
     payment         = excluded.payment,
     forecast_amount = excluded.forecast_amount,

@@ -13,6 +13,9 @@ db.pragma('busy_timeout = 5000');
 const schema = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf-8');
 db.exec(schema);
 
+// Idempotent migrations for columns added after initial schema deployment.
+// CREATE TABLE IF NOT EXISTS above is a no-op for existing tables, so new
+// columns must be applied explicitly here.
 // Idempotent migration: add recur_interval column if an older DB predates it.
 // CREATE TABLE IF NOT EXISTS above is a no-op for existing tables, so schema
 // changes to existing columns must be applied explicitly here.
@@ -22,6 +25,9 @@ if (!cols.some(c => c.name === 'recur_interval')) {
 }
 if (!cols.some(c => c.name === 'status')) {
   db.exec("ALTER TABLE budget_items ADD COLUMN status TEXT NOT NULL DEFAULT 'not started'");
+}
+if (!cols.some(c => c.name === 'is_envelope')) {
+  db.exec('ALTER TABLE budget_items ADD COLUMN is_envelope INTEGER NOT NULL DEFAULT 0');
 }
 
 // Once-off items have a null frequency. Older DBs were created with frequency

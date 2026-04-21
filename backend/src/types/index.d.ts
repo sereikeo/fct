@@ -13,6 +13,7 @@ export interface BudgetItem {
   recurInterval: number;   // multiplier on the frequency (e.g. monthly/3 = quarterly)
   dueDate: string;
   isVariable: boolean;
+  isEnvelope: boolean;
   bucket: Bucket;
   payment: Payment;
   forecastAmount: number;
@@ -91,6 +92,15 @@ export interface CashFlowResult {
   adjustedEntries: CashFlowEntry[];
   overdueItems: OverdueItem[];
   overdueTotals: OverdueTotals;
+}
+
+export interface SpendEntry {
+  id: string;
+  budgetItemId: string;
+  txId: string | null;
+  date: string;
+  amount: number;
+  note: string | null;
 }
 
 export interface EnvelopeWithOverride extends BudgetItem {

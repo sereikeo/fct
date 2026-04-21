@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS budget_items (
   recur_interval  INTEGER NOT NULL DEFAULT 1,
   due_date        TEXT NULL,
   is_variable     INTEGER NOT NULL DEFAULT 0,
+  is_envelope     INTEGER NOT NULL DEFAULT 0,
   bucket          TEXT NOT NULL CHECK (bucket IN ('personal', 'maple')),
   payment         TEXT NOT NULL,
   forecast_amount REAL NOT NULL,
@@ -65,3 +66,20 @@ CREATE TABLE IF NOT EXISTS transactions (
 
 CREATE INDEX IF NOT EXISTS idx_transactions_notion_page_id
   ON transactions (notion_page_id);
+
+CREATE TABLE IF NOT EXISTS spend_log (
+  id              TEXT PRIMARY KEY,
+  budget_item_id  TEXT NOT NULL REFERENCES budget_items(id),
+  tx_id           TEXT REFERENCES transactions(id),
+  date            TEXT NOT NULL,
+  amount          REAL NOT NULL,
+  note            TEXT,
+  created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_spend_log_budget_item_id
+  ON spend_log (budget_item_id);
+
+CREATE INDEX IF NOT EXISTS idx_spend_log_tx_id
+  ON spend_log (tx_id);

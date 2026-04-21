@@ -83,6 +83,7 @@ export interface BudgetItem {
   recurInterval: number;
   dueDate: string;
   isVariable: boolean;
+  isEnvelope: boolean;
   bucket: Bucket;
   payment: Payment;
   forecastAmount: number;
@@ -103,6 +104,15 @@ export interface ReconciliationRecord {
   delta: number;
 }
 
+export interface SpendEntry {
+  id: string;
+  budgetItemId: string;
+  txId: string | null;
+  date: string;
+  amount: number;
+  note: string | null;
+}
+
 export interface HealthResponse {
   status: string;
   notionSyncedAt: string | null;
@@ -113,6 +123,7 @@ export const QUERY_KEYS = {
   cashflow: (from: string, to: string) => ['cashflow', { from, to }] as const,
   envelopes: ['envelopes'] as const,
   reconciliation: ['reconciliation'] as const,
+  spend: (period: string) => ['spend', period] as const,
   health: ['health'] as const,
 };
 
@@ -163,6 +174,25 @@ export async function postReconciliation(body: {
 
 export async function deleteReconciliation(id: string): Promise<void> {
   await client.delete(`/reconciliation/${id}`);
+}
+
+export async function getSpend(period: string): Promise<{ entries: SpendEntry[] }> {
+  const { data } = await client.get('/spend', { params: { period } });
+  return data;
+}
+
+export async function postSpend(body: {
+  budgetItemId: string;
+  date: string;
+  amount: number;
+  note?: string;
+}): Promise<SpendEntry> {
+  const { data } = await client.post('/spend', body);
+  return data.entry;
+}
+
+export async function deleteSpend(id: string): Promise<void> {
+  await client.delete(`/spend/${id}`);
 }
 
 export async function getHealth(): Promise<HealthResponse> {

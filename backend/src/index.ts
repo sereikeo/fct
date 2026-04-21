@@ -7,6 +7,7 @@ import { envelopesRouter }     from './routes/envelopes';
 import { reconciliationRouter } from './routes/reconciliation';
 import { syncRouter }          from './routes/sync';
 import { driftRouter }         from './routes/drift';
+import { spendRouter }         from './routes/spend';
 import { runSync, startScheduledSync } from './services/notion';
 
 const app  = express();
@@ -29,6 +30,7 @@ app.use('/api/envelopes',      envelopesRouter);
 app.use('/api/reconciliation', reconciliationRouter);
 app.use('/api/sync',           syncRouter);
 app.use('/api/drift',          driftRouter);
+app.use('/api/spend',          spendRouter);
 
 // ---------------------------------------------------------------------------
 // 404
