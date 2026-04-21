@@ -45,16 +45,16 @@ const stmtFindItem = db.prepare(
   'SELECT id, forecast_amount FROM budget_items WHERE id = ? AND deleted_at IS NULL'
 );
 
-// Find the confirmed tx occurrence this spend belongs to: most recent
-// expected_date on or before the spend date.
+// Find the tx occurrence this spend belongs to: prefer confirmed, fall back to
+// unconfirmed. Most recent expected_date on or before the spend date.
+// Confirmed rows come first so a paid occurrence always wins over a projected one.
 const stmtFindTx = db.prepare(`
   SELECT t.id, t.amount AS current_amount, bi.forecast_amount
   FROM   transactions t
   JOIN   budget_items bi ON bi.notion_page_id = t.notion_page_id
   WHERE  bi.id         = @budget_item_id
-    AND  t.confirmed   = 1
     AND  t.expected_date <= @date
-  ORDER  BY t.expected_date DESC
+  ORDER  BY t.confirmed DESC, t.expected_date DESC
   LIMIT  1
 `);
 
