@@ -67,7 +67,7 @@ function mapPageToRow(page: PageObjectResponse): Record<string, unknown> | null 
   const tags = extractMultiSelect(p['Tags']);
   if (tags.some(t => t.toLowerCase() === 'excluded')) return null;
   const bucket = tags.some(t => t.toLowerCase().includes('maple')) ? 'maple' : 'personal';
-  const isVariable = tags.includes('Variable expense') ? 1 : 0;
+  const isVariable = tags.some(t => t.toLowerCase().includes('variable')) ? 1 : 0;
 
   // Budget select values may be composite like 'Maple-Income' or 'Maple-Bills'.
   // All Notion amounts are positive — type determines the sign in the engine.
