@@ -470,8 +470,12 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
   }
 
   // 1. Confirmed transactions — move the balance on their cash-effect date.
+  // Skip any confirmed tx whose expected_date was overdue (≤ openingBalanceDate):
+  // that debt was already surfaced in the overdue panel and must not re-enter
+  // the forward timeline as a new deduction when the user clears it in Notion.
   for (const tx of confirmedTxs) {
     if (!tx.confirmed_date) continue;
+    if (openingBalanceDate && tx.expected_date && tx.expected_date <= openingBalanceDate) continue;
     const item = itemByPage.get(tx.notion_page_id);
     const occ = occurrenceFrom(item, tx, tx.confirmed_date);
     placeOnDay(occ, item?.payment ?? '', tx.confirmed_date, {
