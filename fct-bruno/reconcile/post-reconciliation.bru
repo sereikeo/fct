@@ -4,17 +4,23 @@ meta {
   seq: 2
 }
 
+// budgetItemId = id from GET /api/envelopes
+// date = ISO date the actual spend occurred
+// forecastAmount = what the cash engine expected
+// actualAmount = what actually came out
+
 post {
-  url: {{base_url}}/api/reconcile
+  url: {{base_url}}/api/reconciliation
   body: json
   auth: none
 }
 
 body:json {
   {
-    "bucket": "personal",
-    "actual_balance": 1146.69,
-    "as_of_date": "2026-04-21",
-    "note": "Manual correction — post home loan debit"
+    "budgetItemId": "REPLACE_WITH_BUDGET_ITEM_ID",
+    "date": "2026-04-21",
+    "forecastAmount": 320.67,
+    "actualAmount": 336.55,
+    "note": "Premium increased"
   }
 }

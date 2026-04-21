@@ -4,16 +4,22 @@ meta {
   seq: 2
 }
 
-post {
-  url: {{base_url}}/api/envelopes
+// id = budget_item id from GET /api/envelopes
+// period = YYYY-MM (the month the override applies to)
+
+put {
+  url: {{base_url}}/api/envelopes/:id/override
   body: json
   auth: none
 }
 
+params:path {
+  id: REPLACE_WITH_BUDGET_ITEM_ID
+}
+
 body:json {
   {
-    "notion_page_id": "REPLACE_WITH_PAGE_ID",
-    "override_amount": 250.00,
-    "note": "Variable spend adjustment"
+    "period": "2026-04",
+    "overrideAmount": 250.00
   }
 }

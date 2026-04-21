@@ -1,0 +1,25 @@
+meta {
+  name: Patch Reconciliation Entry
+  type: http
+  seq: 3
+}
+
+// Partial update — send only the fields you want to change.
+// id = reconciliation record id from GET /api/reconciliation
+
+patch {
+  url: {{base_url}}/api/reconciliation/:id
+  body: json
+  auth: none
+}
+
+params:path {
+  id: REPLACE_WITH_RECONCILIATION_ID
+}
+
+body:json {
+  {
+    "actualAmount": 340.00,
+    "note": "Corrected after bank statement"
+  }
+}

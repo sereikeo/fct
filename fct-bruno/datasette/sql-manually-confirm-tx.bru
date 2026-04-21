@@ -4,6 +4,10 @@ meta {
   seq: 5
 }
 
+// Read-only query — shows the transaction you'd confirm before doing it.
+// To actually confirm, use write-confirm-transaction.bru (requires sqlite3 CLI
+// on the NAS) or PATCH /api/drift/:notionPageId for amount corrections.
+
 get {
   url: {{datasette_url}}/fct.json
   body: none
@@ -11,10 +15,6 @@ get {
 }
 
 query {
-  sql: UPDATE transactions SET confirmed = 1, confirmed_date = date('now') WHERE id = REPLACE_WITH_ID AND confirmed = 0
+  sql: SELECT id, name, bucket, type, amount, expected_date, confirmed, confirmed_date FROM transactions WHERE id = 'REPLACE_WITH_ID'
   _shape: array
 }
-
-# WARNING: Datasette read-only by default.
-# If Opus enabled the write API, use POST /-/write instead.
-# POST body: { "sql": "UPDATE ..." }

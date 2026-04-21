@@ -4,6 +4,14 @@ meta {
   seq: 6
 }
 
+// Datasette is read-only — this will not work via HTTP.
+// Run directly on the NAS instead:
+//
+//   sqlite3 /volume1/docker/fct/data/fct.db \
+//     "UPDATE transactions SET confirmed = 1, confirmed_date = date('now'), updated_at = datetime('now') WHERE id = 'REPLACE_WITH_ID'"
+//
+// For correcting a confirmed tx amount, use PATCH /api/drift/:notionPageId instead.
+
 post {
   url: {{datasette_url}}/fct/-/write
   body: json
@@ -12,9 +20,6 @@ post {
 
 body:json {
   {
-    "sql": "UPDATE transactions SET confirmed = 1, confirmed_date = date('now') WHERE id = REPLACE_WITH_ID"
+    "sql": "UPDATE transactions SET confirmed = 1, confirmed_date = date('now'), updated_at = datetime('now') WHERE id = 'REPLACE_WITH_ID'"
   }
 }
-
-# Requires Datasette launched with --setting allow_write true
-# or datasette-write-api plugin

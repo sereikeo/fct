@@ -4,12 +4,19 @@ meta {
   seq: 3
 }
 
+// Removes the override for a specific month, reverting to Notion forecast.
+// id = budget_item id from GET /api/envelopes
+
 delete {
-  url: {{base_url}}/api/envelopes/:notion_page_id
+  url: {{base_url}}/api/envelopes/:id/override
   body: none
   auth: none
 }
 
 params:path {
-  notion_page_id: REPLACE_WITH_PAGE_ID
+  id: REPLACE_WITH_BUDGET_ITEM_ID
+}
+
+query {
+  period: 2026-04
 }

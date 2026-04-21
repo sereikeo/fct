@@ -1,0 +1,27 @@
+meta {
+  name: Apply Drift Correction
+  type: http
+  seq: 2
+}
+
+// Corrects the confirmed tx amount for a budget item.
+// notionPageId = notion_page_id from GET /api/drift response.
+//
+// Omit body entirely to snap the confirmed tx to the current Notion forecast.
+// Supply { "amount": X } to set a specific per-cycle amount instead.
+
+patch {
+  url: {{base_url}}/api/drift/:notionPageId
+  body: json
+  auth: none
+}
+
+params:path {
+  notionPageId: REPLACE_WITH_NOTION_PAGE_ID
+}
+
+body:json {
+  {
+    "amount": 698.70
+  }
+}

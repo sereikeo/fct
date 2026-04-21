@@ -1,0 +1,16 @@
+meta {
+  name: Get Drift Report
+  type: http
+  seq: 1
+}
+
+// Returns:
+//   driftCount  — number of confirmed txs with amount != current Notion forecast
+//   drifted     — those rows, sorted by largest gap
+//   confirmed   — full audit of all confirmed txs vs current Notion amounts
+
+get {
+  url: {{base_url}}/api/drift
+  body: none
+  auth: none
+}
