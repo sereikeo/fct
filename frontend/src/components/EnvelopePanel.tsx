@@ -100,7 +100,7 @@ function VariableRow({ envelope }: { envelope: EnvelopeWithOverride }) {
   );
 }
 
-export default function EnvelopePanel() {
+export default function EnvelopePanel({ bucketFilter = 'all' }: { bucketFilter?: 'all' | 'personal' | 'maple' }) {
   const { data, isLoading, isError } = useQuery({
     queryKey: QUERY_KEYS.envelopes,
     queryFn: getEnvelopes,
@@ -123,7 +123,9 @@ export default function EnvelopePanel() {
     );
   }
 
-  const variableEnvelopes = data.envelopes.filter((e) => !e.deletedAt && e.isVariable);
+  const variableEnvelopes = data.envelopes.filter(
+    (e) => !e.deletedAt && e.isVariable && (bucketFilter === 'all' || e.bucket === bucketFilter)
+  );
 
   return (
     <div className="card">
