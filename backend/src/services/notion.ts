@@ -217,6 +217,16 @@ const stmtInsertTx = db.prepare(`
   )
 `);
 
+const stmtInsertConfirmedTx = db.prepare(`
+  INSERT INTO transactions (
+    id, notion_page_id, name, type, bucket, frequency, recur_interval,
+    expected_date, amount, confirmed, confirmed_date
+  ) VALUES (
+    @id, @notion_page_id, @name, @type, @bucket, @frequency, @recur_interval,
+    @expected_date, @amount, 1, date('now')
+  )
+`);
+
 const stmtConfirmTx = db.prepare(`
   UPDATE transactions
   SET    confirmed = 1, confirmed_date = date('now'), updated_at = datetime('now')
@@ -313,7 +323,13 @@ function updateTransactionLedger(row: {
 
   if (isOnce) {
     if (!existing) {
-      stmtInsertTx.run(insertArgs());
+      // If already done on first sight, insert straight as confirmed so it
+      // appears as 'paid'/'received' immediately without needing a second sync.
+      if (row.status === 'done') {
+        stmtInsertConfirmedTx.run(insertArgs());
+      } else {
+        stmtInsertTx.run(insertArgs());
+      }
     } else if (row.status === 'done') {
       stmtConfirmTx.run(existing.id);
     } else {
