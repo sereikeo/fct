@@ -1,0 +1,16 @@
+meta {
+  name: SQL - Pending vs Confirmed Summary
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{datasette_url}}/fct.json
+  body: none
+  auth: none
+}
+
+query {
+  sql: SELECT bucket, confirmed, COUNT(*) as count, ROUND(SUM(amount),2) as total FROM transactions GROUP BY bucket, confirmed ORDER BY bucket, confirmed
+  _shape: array
+}

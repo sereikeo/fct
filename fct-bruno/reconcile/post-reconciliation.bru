@@ -1,0 +1,20 @@
+meta {
+  name: Post Reconciliation Entry
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{base_url}}/api/reconcile
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "bucket": "personal",
+    "actual_balance": 1146.69,
+    "as_of_date": "2026-04-21",
+    "note": "Manual correction — post home loan debit"
+  }
+}

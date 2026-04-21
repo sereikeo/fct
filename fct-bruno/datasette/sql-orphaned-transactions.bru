@@ -1,0 +1,16 @@
+meta {
+  name: SQL - Orphaned Transactions
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{datasette_url}}/fct.json
+  body: none
+  auth: none
+}
+
+query {
+  sql: SELECT t.id, t.name, t.bucket, t.expected_date, t.amount, t.confirmed FROM transactions t LEFT JOIN budget_items b ON t.notion_page_id = b.notion_page_id WHERE b.notion_page_id IS NULL ORDER BY t.expected_date
+  _shape: array
+}

@@ -1,0 +1,15 @@
+meta {
+  name: Delete Envelope Override
+  type: http
+  seq: 3
+}
+
+delete {
+  url: {{base_url}}/api/envelopes/:notion_page_id
+  body: none
+  auth: none
+}
+
+params:path {
+  notion_page_id: REPLACE_WITH_PAGE_ID
+}

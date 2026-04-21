@@ -1,0 +1,20 @@
+meta {
+  name: SQL - Manually Confirm Transaction
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{datasette_url}}/fct.json
+  body: none
+  auth: none
+}
+
+query {
+  sql: UPDATE transactions SET confirmed = 1, confirmed_date = date('now') WHERE id = REPLACE_WITH_ID AND confirmed = 0
+  _shape: array
+}
+
+# WARNING: Datasette read-only by default.
+# If Opus enabled the write API, use POST /-/write instead.
+# POST body: { "sql": "UPDATE ..." }

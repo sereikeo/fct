@@ -1,0 +1,16 @@
+meta {
+  name: Query Budget Items
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{datasette_url}}/fct/budget_items.json
+  body: none
+  auth: none
+}
+
+query {
+  _sort: due_date
+  _size: 50
+}

@@ -1,0 +1,20 @@
+meta {
+  name: Write - Manually Confirm Transaction
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{datasette_url}}/fct/-/write
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "sql": "UPDATE transactions SET confirmed = 1, confirmed_date = date('now') WHERE id = REPLACE_WITH_ID"
+  }
+}
+
+# Requires Datasette launched with --setting allow_write true
+# or datasette-write-api plugin

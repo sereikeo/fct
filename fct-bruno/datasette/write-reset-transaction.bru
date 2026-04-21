@@ -1,0 +1,17 @@
+meta {
+  name: Write - Reset Transaction to Pending
+  type: http
+  seq: 7
+}
+
+post {
+  url: {{datasette_url}}/fct/-/write
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "sql": "UPDATE transactions SET confirmed = 0, confirmed_date = NULL WHERE id = REPLACE_WITH_ID"
+  }
+}

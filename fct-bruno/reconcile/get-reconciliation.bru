@@ -1,0 +1,15 @@
+meta {
+  name: Get Reconciliation
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{base_url}}/api/reconcile
+  body: none
+  auth: none
+}
+
+query {
+  bucket: personal
+}

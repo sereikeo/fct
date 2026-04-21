@@ -1,0 +1,17 @@
+meta {
+  name: Query Transactions Ledger
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{datasette_url}}/fct/transactions.json
+  body: none
+  auth: none
+}
+
+query {
+  _sort: expected_date
+  _size: 100
+  confirmed: 0
+}
