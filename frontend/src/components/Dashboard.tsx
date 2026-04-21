@@ -12,7 +12,7 @@ interface Props {
   onDateRangeChange: (r: DateRange) => void;
 }
 
-function toISO(d: Date): string { return d.toISOString().slice(0, 10); }
+function toISO(d: Date): string { const p = (n: number) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`; }
 function addDays(d: Date, n: number): Date { const r = new Date(d); r.setDate(r.getDate() + n); return r; }
 function diffDays(from: string, to: string): number {
   return Math.round((new Date(to).getTime() - new Date(from).getTime()) / 86_400_000);

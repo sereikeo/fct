@@ -7,7 +7,8 @@ const queryClient = new QueryClient({
 });
 
 function toISO(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
 function addDays(d: Date, n: number): Date {
