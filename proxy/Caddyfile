@@ -2,11 +2,7 @@
     handle /api/* {
         reverse_proxy backend:3001
     }
-    redir /db /db/ 301
-    handle /db/* {
-        reverse_proxy datasette:8001
-    }
-    handle {
+handle {
         root * /srv
         try_files {path} /index.html
         file_server
