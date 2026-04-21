@@ -6,6 +6,7 @@ import { cashflowRouter }      from './routes/cashflow';
 import { envelopesRouter }     from './routes/envelopes';
 import { reconciliationRouter } from './routes/reconciliation';
 import { syncRouter }          from './routes/sync';
+import { driftRouter }         from './routes/drift';
 import { runSync, startScheduledSync } from './services/notion';
 
 const app  = express();
@@ -27,6 +28,7 @@ app.use('/api/cashflow',       cashflowRouter);
 app.use('/api/envelopes',      envelopesRouter);
 app.use('/api/reconciliation', reconciliationRouter);
 app.use('/api/sync',           syncRouter);
+app.use('/api/drift',          driftRouter);
 
 // ---------------------------------------------------------------------------
 // 404

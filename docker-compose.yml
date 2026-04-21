@@ -31,6 +31,19 @@ services:
     volumes:
       - ${SQLITE_DIR:-./data}:/app/data
 
+  datasette:
+    image: datasetteproject/datasette:latest
+    restart: unless-stopped
+    volumes:
+      - ${SQLITE_DIR:-./data}:/data:ro
+    command: >
+      datasette /data/fct.db
+      --host 0.0.0.0
+      --port 8001
+      --setting sql_time_limit_ms 5000
+      --setting max_returned_rows 1000
+      --setting allow_download 0
+
   runner:
     image: myoung34/github-runner:latest
     restart: unless-stopped

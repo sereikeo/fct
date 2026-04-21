@@ -2,6 +2,10 @@
     handle /api/* {
         reverse_proxy backend:3001
     }
+    handle /db/* {
+        uri strip_prefix /db
+        reverse_proxy datasette:8001
+    }
     handle {
         root * /srv
         try_files {path} /index.html
