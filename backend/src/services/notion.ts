@@ -331,21 +331,27 @@ function updateTransactionLedger(row: {
   });
 
   if (isOnce) {
-    if (!existing) {
-      if (row.status === 'done') {
-        // Already done on first sight — insert straight as confirmed.
-        stmtInsertConfirmedTx.run(insertArgs());
+    const confirmedRow = stmtGetConfirmedOnceTx.get(row.notion_page_id) as { id: string } | undefined;
+    if (confirmedRow) return; // confirmed snapshot exists — never overwrite
+
+    const today = new Date().toISOString().slice(0, 10);
+    const isDue  = row.due_date <= today;
+
+    if (isDue) {
+      // Once-offs are auto-confirmed on or after their due date.
+      // No Notion automation or status change required.
+      if (existing) {
+        stmtConfirmTx.run({ id: existing.id, amount: row.forecast_amount });
       } else {
-        // Not done. If a confirmed tx exists the user must have un-ticked it in
-        // Notion — reverse the confirmation so it re-enters as unconfirmed.
-        const prior = stmtGetConfirmedOnceTx.get(row.notion_page_id) as { id: string } | undefined;
-        if (prior) stmtDeleteTx.run(prior.id);
+        stmtInsertConfirmedTx.run(insertArgs());
+      }
+    } else {
+      // Future once-off — keep as a projected unconfirmed entry.
+      if (existing) {
+        stmtSyncUnconfirmedTx.run(syncArgs());
+      } else {
         stmtInsertTx.run(insertArgs());
       }
-    } else if (row.status === 'done') {
-      stmtConfirmTx.run({ id: existing.id, amount: row.forecast_amount });
-    } else {
-      stmtSyncUnconfirmedTx.run(syncArgs());
     }
     return;
   }

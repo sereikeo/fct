@@ -158,13 +158,13 @@ export default function EnvelopePanel({ bucketFilter = 'all' }: { bucketFilter?:
   return (
     <div className="card">
       <div className="hd">
-        <h3>Variable spend · this month</h3>
+        <h3>Envelope spend · this month</h3>
         <span className="sub">budget vs actual-to-date</span>
       </div>
       <div className="bd">
         {variableEnvelopes.length === 0 ? (
           <p style={{ color: 'var(--mute)', fontSize: 12, margin: 0 }}>
-            No variable envelopes. Tag weekly/fortnightly items as variable in Notion to track spend here.
+            No envelopes to track. Tag weekly/fortnightly items as variable in Notion to track spend here.
           </p>
         ) : (
           variableEnvelopes.map((env) => {
