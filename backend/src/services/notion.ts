@@ -227,6 +227,13 @@ const stmtInsertConfirmedTx = db.prepare(`
   )
 `);
 
+// Used to find a confirmed once-off tx that the user may have un-ticked in Notion.
+const stmtGetConfirmedOnceTx = db.prepare(
+  'SELECT id FROM transactions WHERE notion_page_id = ? AND confirmed = 1 LIMIT 1'
+);
+
+const stmtDeleteTx = db.prepare('DELETE FROM transactions WHERE id = ?');
+
 const stmtConfirmTx = db.prepare(`
   UPDATE transactions
   SET    confirmed = 1, confirmed_date = date('now'), updated_at = datetime('now')
@@ -323,11 +330,14 @@ function updateTransactionLedger(row: {
 
   if (isOnce) {
     if (!existing) {
-      // If already done on first sight, insert straight as confirmed so it
-      // appears as 'paid'/'received' immediately without needing a second sync.
       if (row.status === 'done') {
+        // Already done on first sight — insert straight as confirmed.
         stmtInsertConfirmedTx.run(insertArgs());
       } else {
+        // Not done. If a confirmed tx exists the user must have un-ticked it in
+        // Notion — reverse the confirmation so it re-enters as unconfirmed.
+        const prior = stmtGetConfirmedOnceTx.get(row.notion_page_id) as { id: string } | undefined;
+        if (prior) stmtDeleteTx.run(prior.id);
         stmtInsertTx.run(insertArgs());
       }
     } else if (row.status === 'done') {

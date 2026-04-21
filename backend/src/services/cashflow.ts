@@ -470,12 +470,21 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
   }
 
   // 1. Confirmed transactions — move the balance on their cash-effect date.
-  // This includes formerly-overdue items: the overdue panel surfaced the debt,
-  // but the cash movement is only real when confirmed (money actually left/arrived).
+  // For formerly-overdue items, deduct ALL missed cycles (not just one): the
+  // ledger tracks one tx row but the user paid the full overdue liability.
   for (const tx of confirmedTxs) {
     if (!tx.confirmed_date) continue;
     const item = itemByPage.get(tx.notion_page_id);
-    const occ = occurrenceFrom(item, tx, tx.confirmed_date);
+    let occ = occurrenceFrom(item, tx, tx.confirmed_date);
+
+    const expDate = tx.expected_date;
+    if (openingBalanceDate && expDate && expDate <= openingBalanceDate) {
+      const freq     = (tx.frequency ?? item?.frequency ?? 'once') as ItemRow['frequency'];
+      const interval = Math.max(1, tx.recur_interval ?? item?.recur_interval ?? 1);
+      const missed   = countMissedCycles(freq, interval, parseDate(expDate), seedDate);
+      if (missed > 1) occ = { ...occ, forecastAmount: tx.amount * missed };
+    }
+
     placeOnDay(occ, item?.payment ?? '', tx.confirmed_date, {
       isConfirmed: true, isPending: false, isProjected: false,
     });
