@@ -234,10 +234,12 @@ const stmtGetConfirmedOnceTx = db.prepare(
 
 const stmtDeleteTx = db.prepare('DELETE FROM transactions WHERE id = ?');
 
+// Confirms a tx and snapshots the current Notion amount so the confirmed
+// record reflects what was actually paid, not a stale per-cycle figure.
 const stmtConfirmTx = db.prepare(`
   UPDATE transactions
-  SET    confirmed = 1, confirmed_date = date('now'), updated_at = datetime('now')
-  WHERE  id = ?
+  SET    confirmed = 1, confirmed_date = date('now'), amount = @amount, updated_at = datetime('now')
+  WHERE  id = @id
 `);
 
 // Syncs an unconfirmed ledger row with the latest Notion state. Confirmed
@@ -341,7 +343,7 @@ function updateTransactionLedger(row: {
         stmtInsertTx.run(insertArgs());
       }
     } else if (row.status === 'done') {
-      stmtConfirmTx.run(existing.id);
+      stmtConfirmTx.run({ id: existing.id, amount: row.forecast_amount });
     } else {
       stmtSyncUnconfirmedTx.run(syncArgs());
     }
@@ -362,7 +364,7 @@ function updateTransactionLedger(row: {
 
   if (currentDue >= nextCycle) {
     // Notion advanced by ≥ one full interval → previous cycle was paid.
-    stmtConfirmTx.run(existing.id);
+    stmtConfirmTx.run({ id: existing.id, amount: row.forecast_amount });
     stmtInsertTx.run(insertArgs());
     return;
   }
