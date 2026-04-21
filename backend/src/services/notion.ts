@@ -69,11 +69,15 @@ function mapPageToRow(page: PageObjectResponse): Record<string, unknown> | null 
   const bucket = tags.some(t => t.toLowerCase().includes('maple')) ? 'maple' : 'personal';
   const isVariable = tags.includes('Variable expense') ? 1 : 0;
 
-  // Budget select: 'Income', 'Expense', 'subscription' → normalise to type
-  const budget = extractSelect(p['Budget'])?.toLowerCase() ?? 'expense';
+  // Budget select values may be composite like 'Maple-Income' or 'Maple-Bills'.
+  // All Notion amounts are positive — type determines the sign in the engine.
+  // Check budget select first, fall back to Tags for the same keywords.
+  const budget = extractSelect(p['Budget'])?.toLowerCase() ?? '';
+  const tagStr = tags.map(t => t.toLowerCase()).join(' ');
+  const combined = `${budget} ${tagStr}`;
   const type =
-    budget === 'income' ? 'income'
-    : budget === 'transfer' ? 'transfer'
+    combined.includes('income')   ? 'income'
+    : combined.includes('transfer') ? 'transfer'
     : 'expense';
 
   // Recur Unit select: 'Month(s)', 'Week(s)', 'Year(s)', 'Day(s)' — or null
