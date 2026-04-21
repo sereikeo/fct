@@ -307,8 +307,8 @@ function LedgerCard({
                     {isIncome ? '+' : '−'}A${amt.toFixed(2)}
                   </td>
                   <td>
-                    <span className={`reco-pill${item.isReconciled ? ' ok' : ''}`}>
-                      {item.isReconciled ? 'reconciled' : isIncome ? 'scheduled' : 'pending'}
+                    <span className={`reco-pill${item.isReconciled ? ' ok' : item.isConfirmed ? ' ok' : ''}`}>
+                      {item.isReconciled ? 'reconciled' : item.isConfirmed ? (isIncome ? 'received' : 'paid') : isIncome ? 'scheduled' : 'pending'}
                     </span>
                   </td>
                 </tr>

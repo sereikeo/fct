@@ -470,12 +470,10 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
   }
 
   // 1. Confirmed transactions — move the balance on their cash-effect date.
-  // Skip any confirmed tx whose expected_date was overdue (≤ openingBalanceDate):
-  // that debt was already surfaced in the overdue panel and must not re-enter
-  // the forward timeline as a new deduction when the user clears it in Notion.
+  // This includes formerly-overdue items: the overdue panel surfaced the debt,
+  // but the cash movement is only real when confirmed (money actually left/arrived).
   for (const tx of confirmedTxs) {
     if (!tx.confirmed_date) continue;
-    if (openingBalanceDate && tx.expected_date && tx.expected_date <= openingBalanceDate) continue;
     const item = itemByPage.get(tx.notion_page_id);
     const occ = occurrenceFrom(item, tx, tx.confirmed_date);
     placeOnDay(occ, item?.payment ?? '', tx.confirmed_date, {
@@ -583,7 +581,7 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
         }
       }
 
-      breakdown.push(makeLineItem(s.occ, false, s.isPending, s.isProjected));
+      breakdown.push(makeLineItem(s.occ, false, s.isConfirmed, s.isPending, s.isProjected));
     }
 
     // CC statement deductions hit Personal only (CC is locked to Personal).
@@ -595,7 +593,7 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
         outflow += amount;
       }
 
-      breakdown.push(makeLineItem(s.occ, true, s.isPending, s.isProjected));
+      breakdown.push(makeLineItem(s.occ, true, s.isConfirmed, s.isPending, s.isProjected));
     }
 
     if (dateStr >= emitStartStr) {
@@ -629,6 +627,7 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
 function makeLineItem(
   occ: Occurrence,
   isCC: boolean,
+  isConfirmed: boolean,
   isPending: boolean,
   isProjected: boolean,
 ): LineItem {
@@ -644,6 +643,7 @@ function makeLineItem(
     delta:          occ.delta,
     isReconciled:   occ.isReconciled,
     isCC,
+    isConfirmed,
     isPending,
     isProjected,
     payment:        occ.payment,

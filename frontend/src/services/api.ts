@@ -21,6 +21,7 @@ export interface LineItem {
   delta: number | null;
   isReconciled: boolean;
   isCC: boolean;
+  isConfirmed: boolean;
   isPending: boolean;
   isProjected: boolean;
   payment: string;
