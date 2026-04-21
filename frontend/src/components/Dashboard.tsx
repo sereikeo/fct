@@ -504,7 +504,7 @@ export default function Dashboard({ dateRange, onDateRangeChange }: Props) {
         {/* Row 2: Variable spend | Reconcile drop zone */}
         <section className="row2">
           <EnvelopePanel bucketFilter={bucketFilter} />
-          <ReconciliationPanel />
+          <ReconciliationPanel bucketFilter={bucketFilter} />
         </section>
 
         <div style={{ height: 22 }} />

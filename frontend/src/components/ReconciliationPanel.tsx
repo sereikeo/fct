@@ -7,23 +7,35 @@ import {
   getEnvelopes,
   QUERY_KEYS,
   ReconciliationRecord,
+  EnvelopeWithOverride,
 } from '../services/api';
 
 const fmtAUDc = (n: number) =>
   (n < 0 ? '−A$' : 'A$') + Math.abs(n).toFixed(2);
 
 interface AddFormProps {
-  envelopeMap: Record<string, string>;
+  envelopes: EnvelopeWithOverride[];
+  bucketFilter: 'all' | 'personal' | 'maple';
   onClose: () => void;
 }
 
-function AddForm({ envelopeMap, onClose }: AddFormProps) {
+function AddForm({ envelopes, bucketFilter, onClose }: AddFormProps) {
   const qc = useQueryClient();
   const [budgetItemId, setBudgetItemId] = useState('');
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [forecastAmount, setForecastAmount] = useState('');
   const [actualAmount, setActualAmount] = useState('');
   const [note, setNote] = useState('');
+
+  const filtered = envelopes.filter(
+    (e) => !e.deletedAt && (bucketFilter === 'all' || e.bucket === bucketFilter)
+  );
+
+  function handleItemChange(id: string) {
+    setBudgetItemId(id);
+    const env = envelopes.find((e) => e.id === id);
+    if (env) setForecastAmount(String(env.forecastAmount));
+  }
 
   const add = useMutation({
     mutationFn: () =>
@@ -51,9 +63,9 @@ function AddForm({ envelopeMap, onClose }: AddFormProps) {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
         <div style={{ gridColumn: '1 / -1' }}>
           <div style={{ fontSize: 11, color: 'var(--mute)', marginBottom: 4 }}>Budget item</div>
-          <select value={budgetItemId} onChange={(e) => setBudgetItemId(e.target.value)} style={inputStyle}>
+          <select value={budgetItemId} onChange={(e) => handleItemChange(e.target.value)} style={inputStyle}>
             <option value="">Select…</option>
-            {Object.entries(envelopeMap).map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+            {filtered.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
           </select>
         </div>
         <div>
@@ -83,7 +95,7 @@ function AddForm({ envelopeMap, onClose }: AddFormProps) {
   );
 }
 
-export default function ReconciliationPanel() {
+export default function ReconciliationPanel({ bucketFilter = 'all' }: { bucketFilter?: 'all' | 'personal' | 'maple' }) {
   const qc = useQueryClient();
   const [showForm, setShowForm] = useState(false);
 
@@ -95,8 +107,9 @@ export default function ReconciliationPanel() {
     onSuccess: () => qc.invalidateQueries({ queryKey: QUERY_KEYS.reconciliation }),
   });
 
+  const envelopes = envData?.envelopes ?? [];
   const envelopeMap: Record<string, string> = {};
-  if (envData) for (const e of envData.envelopes) envelopeMap[e.id] = e.name;
+  for (const e of envelopes) envelopeMap[e.id] = e.name;
 
   const records: ReconciliationRecord[] = data?.records ?? [];
 
@@ -116,7 +129,7 @@ export default function ReconciliationPanel() {
         </div>
       </div>
 
-      {showForm && <AddForm envelopeMap={envelopeMap} onClose={() => setShowForm(false)} />}
+      {showForm && <AddForm envelopes={envelopes} bucketFilter={bucketFilter} onClose={() => setShowForm(false)} />}
 
       <div className="bd">
         <div className="drop" tabIndex={0}>
