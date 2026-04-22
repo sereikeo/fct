@@ -166,6 +166,8 @@ function buildChartSVG(
 interface Props {
   entries: CashFlowEntry[];
   actualsEntries: CashFlowEntry[];
+  adjustedEntries: CashFlowEntry[];
+  hasOverdue: boolean;
   scrubIndex: number;
   onScrubChange: (i: number) => void;
   horizon: number;
@@ -174,12 +176,13 @@ interface Props {
 }
 
 export default function CashFlowChart({
-  entries, actualsEntries, scrubIndex, onScrubChange, horizon, onHorizonChange, bucketFilter,
+  entries, actualsEntries, adjustedEntries, hasOverdue, scrubIndex, onScrubChange, horizon, onHorizonChange, bucketFilter,
 }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [readout, setReadout] = useState<ReadoutState | null>(null);
   const [dragging, setDragging] = useState(false);
   const [showActuals, setShowActuals] = useState(false);
+  const [showAdjusted, setShowAdjusted] = useState(false);
 
   const series = useMemo<ChartSeries[]>(() =>
     entries.map((e, i) => ({
@@ -195,23 +198,25 @@ export default function CashFlowChart({
 
   const actualsChartSeries = useMemo<ChartSeries[]>(() =>
     actualsEntries.map((e, i) => ({
-      i,
-      d: new Date(e.date + 'T00:00:00'),
-      balP: e.balP,
-      balM: e.balM,
-      bal: e.balance,
-      events: e.breakdown,
+      i, d: new Date(e.date + 'T00:00:00'), balP: e.balP, balM: e.balM, bal: e.balance, events: e.breakdown,
     })),
     [actualsEntries]
   );
 
+  const adjustedChartSeries = useMemo<ChartSeries[]>(() =>
+    adjustedEntries.map((e, i) => ({
+      i, d: new Date(e.date + 'T00:00:00'), balP: e.balP, balM: e.balM, bal: e.balance, events: e.breakdown,
+    })),
+    [adjustedEntries]
+  );
+
   useLayoutEffect(() => {
     if (!svgRef.current || series.length === 0) return;
-    const adj = showActuals ? actualsChartSeries : null;
+    const adj = showActuals ? actualsChartSeries : showAdjusted && hasOverdue ? adjustedChartSeries : null;
     const { svgHTML, readout: ro } = buildChartSVG(series, adj, scrubIndex, bucketFilter);
     svgRef.current.innerHTML = svgHTML;
     setReadout(ro);
-  }, [series, actualsChartSeries, showActuals, scrubIndex, bucketFilter]);
+  }, [series, actualsChartSeries, adjustedChartSeries, showActuals, showAdjusted, hasOverdue, scrubIndex, bucketFilter]);
 
   function svgToIndex(clientX: number): number {
     if (!svgRef.current || series.length === 0) return 0;
@@ -302,11 +307,18 @@ export default function CashFlowChart({
           type="button"
           className={`toggle-adj${showActuals ? ' on' : ''}`}
           aria-pressed={showActuals ? 'true' : 'false'}
-          onClick={() => setShowActuals(v => !v)}
+          onClick={() => { setShowActuals(v => !v); setShowAdjusted(false); }}
           title="Show balance if you stop all variable spending now"
-        >
-          <span className="sw" /> Actuals only
-        </button>
+        >Actuals</button>
+        {hasOverdue && (
+          <button
+            type="button"
+            className={`toggle-adj${showAdjusted ? ' on' : ''}`}
+            aria-pressed={showAdjusted ? 'true' : 'false'}
+            onClick={() => { setShowAdjusted(v => !v); setShowActuals(false); }}
+            title="Show balance with all overdue bills resolved"
+          >Net Cash Position</button>
+        )}
         <div className="seg" role="group">
           {([{ label: '1M', days: 30 }, { label: '3M', days: 90 }, { label: '6M', days: 180 }, { label: '1Y', days: 365 }]).map(({ label, days }) => (
             <button

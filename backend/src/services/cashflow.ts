@@ -715,7 +715,16 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
     }
   }
 
-  return { entries, actualsEntries, overdueItems, overdueTotals };
+  const netP = overdueTotals.personal.owedIn - overdueTotals.personal.owedOut;
+  const netM = overdueTotals.maple.owedIn    - overdueTotals.maple.owedOut;
+  const adjustedEntries: CashFlowEntry[] = entries.map(e => ({
+    ...e,
+    balP:    e.balP + netP,
+    balM:    e.balM + netM,
+    balance: e.balance + netP + netM,
+  }));
+
+  return { entries, actualsEntries, adjustedEntries, overdueItems, overdueTotals };
 }
 
 function makeLineItem(
