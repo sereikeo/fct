@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  getEnvelopes, getSpend, postSpend, deleteSpend,
+  getEnvelopes, getSpend, postSpend, deleteSpend, patchEnvelope,
   QUERY_KEYS, EnvelopeWithOverride, SpendEntry,
 } from '../services/api';
 
@@ -134,8 +134,38 @@ interface VariableRowProps {
 
 function VariableRow({ envelope, entries, monthlyBudget }: VariableRowProps) {
   const [adding, setAdding] = useState(false);
+  const [editingBudget, setEditingBudget] = useState(false);
+  const [budgetInput, setBudgetInput] = useState('');
+  const budgetInputRef = useRef<HTMLInputElement>(null);
   const qc = useQueryClient();
   const period = currentPeriod();
+
+  const overrideMutation = useMutation({
+    mutationFn: (amount: number) => patchEnvelope(envelope.id, { period, overrideAmount: amount }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.envelopes });
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.cashflow('', '') });
+      setEditingBudget(false);
+    },
+  });
+
+  function openBudgetEdit() {
+    setBudgetInput(String(monthlyBudget));
+    setEditingBudget(true);
+  }
+
+  function commitBudgetEdit() {
+    const val = parseFloat(budgetInput);
+    if (!isNaN(val) && val > 0 && val !== monthlyBudget) {
+      overrideMutation.mutate(val);
+    } else {
+      setEditingBudget(false);
+    }
+  }
+
+  useEffect(() => {
+    if (editingBudget) budgetInputRef.current?.select();
+  }, [editingBudget]);
 
   const actualSpend = entries.reduce((sum, e) => sum + e.amount, 0);
 
@@ -188,7 +218,27 @@ function VariableRow({ envelope, entries, monthlyBudget }: VariableRowProps) {
               : 'no spend logged'}
           </div>
           <div className="s" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            {actualSpend > 0 ? `${fmtAUD(actualSpend)} of ${fmtAUD(monthlyBudget)}` : `budget ${fmtAUD(monthlyBudget)}`}
+            {actualSpend > 0 ? `${fmtAUD(actualSpend)} of ` : 'budget '}
+            {editingBudget ? (
+              <input
+                ref={budgetInputRef}
+                value={budgetInput}
+                onChange={e => setBudgetInput(e.target.value)}
+                onBlur={commitBudgetEdit}
+                onKeyDown={e => { if (e.key === 'Enter') commitBudgetEdit(); if (e.key === 'Escape') setEditingBudget(false); }}
+                style={{
+                  width: 64, fontFamily: 'JetBrains Mono, monospace', fontSize: 11.5,
+                  background: 'var(--paper-3)', border: '1px solid var(--line)',
+                  borderRadius: 4, padding: '0 4px', color: 'var(--ink)',
+                }}
+              />
+            ) : (
+              <span
+                title="Click to override this month's budget"
+                onClick={openBudgetEdit}
+                style={{ cursor: 'pointer', textDecoration: 'underline dotted', textUnderlineOffset: 2 }}
+              >{fmtAUD(monthlyBudget)}</span>
+            )}
             <button
               onClick={() => setAdding(v => !v)}
               title="Log spend"
