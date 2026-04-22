@@ -515,8 +515,7 @@ export default function Dashboard({ dateRange, onDateRangeChange }: Props) {
             <span><i className="m" />Maple</span>
             <span><i className="fc" />forecast</span>
             <span><i className="today" />today</span>
-            <span>▲ income · ▼ bill</span>
-            {bucketFilter === 'personal' && <span><i className="cc" />◆ CC stmt</span>}
+            {bucketFilter === 'personal' && <span><i className="cc" />CC stmt</span>}
           </div>
         </section>
 

@@ -117,7 +117,6 @@ function buildChartSVG(
     g += `<text x="${xs(series.length - 1) - 6}" y="${ys(sd.getVal(last)) - 8}" font-size="10.5" fill="${sd.color}" font-family="Inter,sans-serif" font-weight="600" text-anchor="end">${sd.label}</text>`;
   });
 
-  g += `<text x="${xs(0) + 14}" y="${pad.t + 12}" font-size="10.5" fill="#131211" font-family="Inter,sans-serif" font-weight="600">TODAY · actual ends</text>`;
 
   // "If paid today" — adjusted balance line(s)
   if (adjustedSeries && adjustedSeries.length === series.length) {
@@ -132,24 +131,6 @@ function buildChartSVG(
     g += `<text x="${xs(adjustedSeries.length - 1) - 6}" y="${ys(seriesDefs[0].getVal(adjustedSeries[adjustedSeries.length - 1])) + 16}" font-size="10.5" fill="${adjColor}" font-family="Inter,sans-serif" font-weight="600" text-anchor="end">net cash position</text>`;
   }
 
-  // event ticks
-  const showCC = bucketFilter === 'personal';
-  for (const s of series) {
-    for (const e of s.events) {
-      const isStmt = e.isCC;
-      if (isStmt && !showCC) continue;
-      const up = e.type === 'income';
-      let yVal: number;
-      if (showSplit) yVal = e.bucket === 'maple' ? s.balM : s.balP;
-      else yVal = seriesDefs[0].getVal(s);
-      const x = xs(s.i), y = ys(yVal);
-      const color = isStmt ? '#5b3b8a' : (up ? '#2e6a3a' : '#131211');
-      const len = isStmt ? 14 : 10;
-      g += `<line x1="${x}" x2="${x}" y1="${y}" y2="${y + (up ? -len : len)}" stroke="${color}" stroke-width="${isStmt ? 2 : 1.3}"/>`;
-      const sym = isStmt ? '◆' : (up ? '▲' : '▼');
-      g += `<text x="${x}" y="${y + (up ? -len - 4 : len + 11)}" font-size="10" text-anchor="middle" fill="${color}" font-family="Inter,sans-serif" font-weight="600">${sym}</text>`;
-    }
-  }
 
   // scrubber line + dots
   let readout: ReadoutState | null = null;
@@ -287,9 +268,6 @@ export default function CashFlowChart({
           </div>
           <div className="sub">
             {scrubSeries ? `+${si} days` : ''}
-            {showSplit && scrubEntry
-              ? ` · Personal + Maple tracked separately · combined ${fmtAUD(scrubEntry.balance)}`
-              : ''}
           </div>
         </div>
 
