@@ -303,22 +303,24 @@ export default function CashFlowChart({
 
       <div className="chart-head">
         <span className="lbl">Scrub · +{si}d from today</span>
-        <button
-          type="button"
-          className={`toggle-adj${showActuals ? ' on' : ''}`}
-          aria-pressed={showActuals ? 'true' : 'false'}
-          onClick={() => { setShowActuals(v => !v); setShowAdjusted(false); }}
-          title="Show balance if you stop all variable spending now"
-        >Actuals</button>
-        {hasOverdue && (
+        <div style={{ display: 'flex', gap: 6 }}>
           <button
             type="button"
-            className={`toggle-adj${showAdjusted ? ' on' : ''}`}
-            aria-pressed={showAdjusted ? 'true' : 'false'}
-            onClick={() => { setShowAdjusted(v => !v); setShowActuals(false); }}
-            title="Show balance with all overdue bills resolved"
-          >Net Cash Position</button>
-        )}
+            className={`toggle-adj${showActuals ? ' on' : ''}`}
+            aria-pressed={showActuals ? 'true' : 'false'}
+            onClick={() => { setShowActuals(v => !v); setShowAdjusted(false); }}
+            title="Show balance if you stop all variable spending now"
+          >Actuals</button>
+          {hasOverdue && (
+            <button
+              type="button"
+              className={`toggle-adj${showAdjusted ? ' on' : ''}`}
+              aria-pressed={showAdjusted ? 'true' : 'false'}
+              onClick={() => { setShowAdjusted(v => !v); setShowActuals(false); }}
+              title="Show balance with all overdue bills resolved"
+            >Net Cash Position</button>
+          )}
+        </div>
         <div className="seg" role="group">
           {([{ label: '1M', days: 30 }, { label: '3M', days: 90 }, { label: '6M', days: 180 }, { label: '1Y', days: 365 }]).map(({ label, days }) => (
             <button
