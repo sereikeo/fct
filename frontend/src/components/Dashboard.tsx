@@ -121,29 +121,32 @@ function OnThisDateCard({ entries, scrubIndex, bucketFilter }: { entries: CashFl
     return true;
   });
 
-  const divider = <div style={{ borderTop: '1px solid var(--line-2)', margin: '8px 0' }} />;
-
   return (
-    <div className="card">
+    <div className="card" style={{ height: 300, display: 'flex', flexDirection: 'column' }}>
       <div className="hd"><h3>On this date</h3><span className="sub">{date}</span></div>
-      <div className="bd">
+
+      {/* Body: flex column so tx list grows and closing balance sticks to bottom */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '12px 20px 0', overflow: 'hidden' }}>
+
         {/* Opening balance */}
-        <div className="kv" style={{ marginBottom: 2 }}>
-          <span className="k" style={{ color: 'var(--mute)' }}>Opening balance</span>
-          <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 13, color: 'var(--mute)' }}>{fmtAUD(openingBalDisplay)}</span>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 8, borderBottom: '1px solid var(--line-2)', flexShrink: 0 }}>
+          <span style={{ fontSize: 12, color: 'var(--mute)' }}>Opening balance</span>
+          <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 12.5, color: 'var(--mute)' }}>{fmtAUD(openingBalDisplay)}</span>
         </div>
 
-        {txItems.length > 0 ? (
-          <>
-            {divider}
-            {txItems.map((b, i) => {
+        {/* Transaction list — scrolls if overflow */}
+        <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, padding: '4px 0' }}>
+          {txItems.length === 0 ? (
+            <div style={{ color: 'var(--mute)', fontSize: 12, padding: '8px 0' }}>No transactions this day</div>
+          ) : (
+            txItems.map((b, i) => {
               const amt   = b.actualAmount ?? b.overrideAmount ?? b.forecastAmount;
               const isIn  = b.type === 'income';
               const color = b.isPending ? 'var(--mute)' : b.isCC ? 'var(--cc)' : isIn ? 'var(--green)' : 'var(--ink)';
               const sign  = isIn ? '+' : '−';
               return (
-                <div key={i} className="kv" style={{ opacity: b.isPending ? 0.55 : 1, marginBottom: 3 }}>
-                  <span style={{ fontSize: 12.5, color: b.isPending ? 'var(--mute)' : 'var(--ink-2)', flex: 1, marginRight: 8 }}>
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', opacity: b.isPending ? 0.5 : 1 }}>
+                  <span style={{ fontSize: 12.5, color: 'var(--ink-2)', flex: 1, marginRight: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {b.name}
                     {b.isPending && <span style={{ marginLeft: 5, fontSize: 10, color: 'var(--mute)', fontStyle: 'italic' }}>awaiting</span>}
                   </span>
@@ -152,28 +155,23 @@ function OnThisDateCard({ entries, scrubIndex, bucketFilter }: { entries: CashFl
                   </span>
                 </div>
               );
-            })}
-            {divider}
-          </>
-        ) : (
-          <>
-            {divider}
-            <div style={{ color: 'var(--mute)', fontSize: 12, marginBottom: 8 }}>No transactions this day</div>
-            {divider}
-          </>
-        )}
-
-        {/* Closing balance */}
-        <div className="kv">
-          <span className="k">Closing balance</span>
-          <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 13, fontWeight: 600, color: closingBal < 0 ? 'var(--accent)' : 'var(--ink)' }}>{fmtAUD(closingBal)}</span>
+            })
+          )}
         </div>
-        {bucketFilter === 'all' && (
-          <div style={{ display: 'flex', gap: 12, marginTop: 4 }}>
-            <span style={{ fontSize: 11.5, color: 'var(--personal)' }}>Personal {fmtAUD(entry.balP)}</span>
-            <span style={{ fontSize: 11.5, color: 'var(--maple)' }}>Maple {fmtAUD(entry.balM)}</span>
+
+        {/* Closing balance — pinned to bottom */}
+        <div style={{ borderTop: '1px solid var(--line-2)', padding: '10px 0 14px', flexShrink: 0 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-2)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Closing balance</span>
+            <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 14, fontWeight: 600, color: closingBal < 0 ? 'var(--accent)' : 'var(--ink)' }}>{fmtAUD(closingBal)}</span>
           </div>
-        )}
+          {bucketFilter === 'all' && (
+            <div style={{ display: 'flex', gap: 12, marginTop: 4 }}>
+              <span style={{ fontSize: 11.5, color: 'var(--personal)' }}>Personal {fmtAUD(entry.balP)}</span>
+              <span style={{ fontSize: 11.5, color: 'var(--maple)' }}>Maple {fmtAUD(entry.balM)}</span>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
