@@ -75,56 +75,104 @@ function CCStatementCard({ entries }: { entries: CashFlowEntry[] }) {
 function OnThisDateCard({ entries, scrubIndex, bucketFilter }: { entries: CashFlowEntry[]; scrubIndex: number; bucketFilter: BucketFilter }) {
   const si = Math.max(0, Math.min(scrubIndex, entries.length - 1));
   const entry = entries[si];
-  const incomeReceived = entries.slice(0, si + 1).reduce((t, e) => t + e.inflow, 0);
-  const billsPaid = entries.slice(0, si + 1).reduce((t, e) => t + e.outflow, 0);
-  const showCC = bucketFilter === 'personal';
-  const ccEntry = entries.find(e => e.breakdown.some(b => b.isCC && b.type === 'expense'));
-  const ccTotal = ccEntry
-    ? ccEntry.breakdown.filter(b => b.isCC && b.type === 'expense').reduce((t, b) => t + (b.overrideAmount ?? b.forecastAmount), 0)
-    : 0;
-  const date = entry ? fmtMD(new Date(entry.date + 'T00:00:00')) : '—';
+  const prev  = si > 0 ? entries[si - 1] : null;
+  const date  = entry ? fmtMD(new Date(entry.date + 'T00:00:00')) : '—';
+
+  if (!entry) {
+    return (
+      <div className="card">
+        <div className="hd"><h3>On this date</h3><span className="sub">{date}</span></div>
+        <div className="bd" style={{ color: 'var(--mute)', fontSize: 12 }}>Waiting for data…</div>
+      </div>
+    );
+  }
+
+  // Opening balance — use previous day's closing, or derive from this day's moves when at start
+  const openingBalP = prev ? prev.balP : (() => {
+    let pIn = 0, pOut = 0;
+    for (const b of entry.breakdown) {
+      if (b.isPending) continue;
+      const amt = b.actualAmount ?? b.overrideAmount ?? b.forecastAmount;
+      if (b.isCC) { pOut += amt; continue; }
+      if (b.type === 'income' && b.bucket === 'personal') pIn += amt;
+      else if (b.type !== 'income' && b.bucket === 'personal') pOut += amt;
+    }
+    return entry.balP - pIn + pOut;
+  })();
+  const openingBalM = prev ? prev.balM : (() => {
+    let mIn = 0, mOut = 0;
+    for (const b of entry.breakdown) {
+      if (b.isPending || b.isCC) continue;
+      const amt = b.actualAmount ?? b.overrideAmount ?? b.forecastAmount;
+      if (b.type === 'income' && b.bucket === 'maple') mIn += amt;
+      else if (b.type !== 'income' && b.bucket === 'maple') mOut += amt;
+    }
+    return entry.balM - mIn + mOut;
+  })();
+
+  const openingBal = openingBalP + openingBalM;
+  const closingBal = bucketFilter === 'personal' ? entry.balP : bucketFilter === 'maple' ? entry.balM : entry.balance;
+  const openingBalDisplay = bucketFilter === 'personal' ? openingBalP : bucketFilter === 'maple' ? openingBalM : openingBal;
+
+  // Transactions visible under the current filter
+  const txItems = entry.breakdown.filter(b => {
+    if (bucketFilter !== 'all' && b.bucket !== bucketFilter) return false;
+    if (b.isCC && bucketFilter !== 'personal') return false;
+    return true;
+  });
+
+  const divider = <div style={{ borderTop: '1px solid var(--line-2)', margin: '8px 0' }} />;
 
   return (
     <div className="card">
       <div className="hd"><h3>On this date</h3><span className="sub">{date}</span></div>
       <div className="bd">
-        {entry ? (
+        {/* Opening balance */}
+        <div className="kv" style={{ marginBottom: 2 }}>
+          <span className="k" style={{ color: 'var(--mute)' }}>Opening balance</span>
+          <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 13, color: 'var(--mute)' }}>{fmtAUD(openingBalDisplay)}</span>
+        </div>
+
+        {txItems.length > 0 ? (
           <>
-            <div className="kv">
-              <span className="k">Projected balance</span>
-              <span className="v">{fmtAUD(entry.balance)}</span>
-            </div>
-            <div className="kv">
-              <span className="k">
-                <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', marginRight: 5, verticalAlign: 'middle', background: 'var(--personal)' }} />
-                Personal
-              </span>
-              <span className="v">{fmtAUD(entry.balP)}</span>
-            </div>
-            <div className="kv">
-              <span className="k">
-                <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', marginRight: 5, verticalAlign: 'middle', background: 'var(--maple)' }} />
-                Maple
-              </span>
-              <span className="v">{fmtAUD(entry.balM)}</span>
-            </div>
-            <div className="kv">
-              <span className="k">Income received</span>
-              <span className="v pos">+{fmtAUD(incomeReceived)}</span>
-            </div>
-            <div className="kv">
-              <span className="k">Bills paid</span>
-              <span className="v">−{fmtAUD(billsPaid)}</span>
-            </div>
-            {showCC && (
-              <div className="kv">
-                <span className="k">Pending on CC</span>
-                <span className="v" style={{ color: 'var(--cc)' }}>{fmtAUD(ccTotal)}</span>
-              </div>
-            )}
+            {divider}
+            {txItems.map((b, i) => {
+              const amt   = b.actualAmount ?? b.overrideAmount ?? b.forecastAmount;
+              const isIn  = b.type === 'income';
+              const color = b.isPending ? 'var(--mute)' : b.isCC ? 'var(--cc)' : isIn ? 'var(--green)' : 'var(--ink)';
+              const sign  = isIn ? '+' : '−';
+              return (
+                <div key={i} className="kv" style={{ opacity: b.isPending ? 0.55 : 1, marginBottom: 3 }}>
+                  <span style={{ fontSize: 12.5, color: b.isPending ? 'var(--mute)' : 'var(--ink-2)', flex: 1, marginRight: 8 }}>
+                    {b.name}
+                    {b.isPending && <span style={{ marginLeft: 5, fontSize: 10, color: 'var(--mute)', fontStyle: 'italic' }}>awaiting</span>}
+                  </span>
+                  <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 12.5, color, whiteSpace: 'nowrap' }}>
+                    {sign}{fmtAUD(amt)}
+                  </span>
+                </div>
+              );
+            })}
+            {divider}
           </>
         ) : (
-          <div style={{ color: 'var(--mute)', fontSize: 12 }}>Waiting for data…</div>
+          <>
+            {divider}
+            <div style={{ color: 'var(--mute)', fontSize: 12, marginBottom: 8 }}>No transactions this day</div>
+            {divider}
+          </>
+        )}
+
+        {/* Closing balance */}
+        <div className="kv">
+          <span className="k">Closing balance</span>
+          <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 13, fontWeight: 600, color: closingBal < 0 ? 'var(--accent)' : 'var(--ink)' }}>{fmtAUD(closingBal)}</span>
+        </div>
+        {bucketFilter === 'all' && (
+          <div style={{ display: 'flex', gap: 12, marginTop: 4 }}>
+            <span style={{ fontSize: 11.5, color: 'var(--personal)' }}>Personal {fmtAUD(entry.balP)}</span>
+            <span style={{ fontSize: 11.5, color: 'var(--maple)' }}>Maple {fmtAUD(entry.balM)}</span>
+          </div>
         )}
       </div>
     </div>
