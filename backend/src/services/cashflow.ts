@@ -324,6 +324,7 @@ interface Scheduled {
   isConfirmed: boolean;
   isPending: boolean;
   isProjected: boolean;
+  isEnvelopeRemainder: boolean;
 }
 
 export function computeCashFlow(from: string, to: string): CashFlowResult {
@@ -481,16 +482,18 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
     payment: string,
     targetDateStr: string,
     flags: { isConfirmed: boolean; isPending: boolean; isProjected: boolean },
+    isEnvelopeRemainder = false,
   ): void {
+    const scheduled: Scheduled = { occ, ...flags, isEnvelopeRemainder };
     if (payment === 'Credit') {
       const stmtDue = fmtDate(ccDueDate(parseDate(targetDateStr), closeDay, dueDay));
       if (stmtDue >= walkStartStr && stmtDue <= to) {
         if (!ccByDueDate.has(stmtDue)) ccByDueDate.set(stmtDue, []);
-        ccByDueDate.get(stmtDue)!.push({ occ, ...flags });
+        ccByDueDate.get(stmtDue)!.push(scheduled);
       }
     } else {
       if (targetDateStr >= walkStartStr && targetDateStr <= to) {
-        nonCCByDate.get(targetDateStr)?.push({ occ, ...flags });
+        nonCCByDate.get(targetDateStr)?.push(scheduled);
       }
     }
   }
@@ -658,6 +661,7 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
             },
             item.payment, remainingDate,
             { isConfirmed: false, isPending: false, isProjected: true },
+            true, // isEnvelopeRemainder — excluded from actualsEntries
           );
         }
       }
@@ -665,28 +669,27 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
   }
 
   // Day-by-day balance computation
-  let balP = initBalP;
-  let balM = initBalM;
-  const entries: CashFlowEntry[] = [];
+  let balP = initBalP,  balM = initBalM;
+  let actP = initBalP,  actM = initBalM;
+  const entries: CashFlowEntry[]        = [];
+  const actualsEntries: CashFlowEntry[] = [];
 
   for (let d = walkStart; d <= toDate; d = addDays(d, 1)) {
     const dateStr = fmtDate(d);
-    let inflow = 0;
-    let outflow = 0;
+    let inflow = 0, outflow = 0;
     const breakdown: LineItem[] = [];
 
     for (const s of nonCCByDate.get(dateStr) ?? []) {
       const amount = s.occ.actualAmount ?? s.occ.overrideAmount ?? s.occ.forecastAmount;
 
-      // Confirmed (historical) and projected (future forecast) both move the
-      // balance. Pending (past unconfirmed) is surfaced separately via
-      // overdueItems and must not be double-counted here.
       if (s.isConfirmed || s.isProjected) {
         if (s.occ.type === 'income') {
-          if (s.occ.bucket === 'personal') balP += amount; else balM += amount;
+          if (s.occ.bucket === 'personal') { balP += amount; if (!s.isEnvelopeRemainder) actP += amount; }
+          else                             { balM += amount; if (!s.isEnvelopeRemainder) actM += amount; }
           inflow += amount;
         } else {
-          if (s.occ.bucket === 'personal') balP -= amount; else balM -= amount;
+          if (s.occ.bucket === 'personal') { balP -= amount; if (!s.isEnvelopeRemainder) actP -= amount; }
+          else                             { balM -= amount; if (!s.isEnvelopeRemainder) actM -= amount; }
           outflow += amount;
         }
       }
@@ -694,12 +697,12 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
       breakdown.push(makeLineItem(s.occ, false, s.isConfirmed, s.isPending, s.isProjected));
     }
 
-    // CC statement deductions hit Personal only (CC is locked to Personal).
     for (const s of ccByDueDate.get(dateStr) ?? []) {
       const amount = s.occ.actualAmount ?? s.occ.overrideAmount ?? s.occ.forecastAmount;
 
       if (s.isConfirmed || s.isProjected) {
         balP -= amount;
+        if (!s.isEnvelopeRemainder) actP -= amount;
         outflow += amount;
       }
 
@@ -707,31 +710,12 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
     }
 
     if (dateStr >= emitStartStr) {
-      entries.push({
-        date:      dateStr,
-        balance:   balP + balM,
-        balP,
-        balM,
-        inflow,
-        outflow,
-        breakdown,
-      });
+      entries.push({ date: dateStr, balance: balP + balM, balP, balM, inflow, outflow, breakdown });
+      actualsEntries.push({ date: dateStr, balance: actP + actM, balP: actP, balM: actM, inflow, outflow, breakdown });
     }
   }
 
-  // adjustedEntries: same walk, but shifted by the net overdue impact per
-  // bucket — represents the balance if all overdue were resolved. owedIn
-  // raises the balance (money arriving), owedOut lowers it (bills paid).
-  const netP = overdueTotals.personal.owedIn - overdueTotals.personal.owedOut;
-  const netM = overdueTotals.maple.owedIn    - overdueTotals.maple.owedOut;
-  const adjustedEntries: CashFlowEntry[] = entries.map(e => ({
-    ...e,
-    balP:    e.balP + netP,
-    balM:    e.balM + netM,
-    balance: e.balance + netP + netM,
-  }));
-
-  return { entries, adjustedEntries, overdueItems, overdueTotals };
+  return { entries, actualsEntries, overdueItems, overdueTotals };
 }
 
 function makeLineItem(

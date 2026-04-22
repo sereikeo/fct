@@ -429,7 +429,7 @@ export default function Dashboard({ dateRange, onDateRangeChange }: Props) {
   });
 
   const entries = useMemo<CashFlowEntry[]>(() => data?.entries ?? [], [data]);
-  const adjustedEntries = useMemo<CashFlowEntry[]>(() => data?.adjustedEntries ?? [], [data]);
+  const actualsEntries = useMemo<CashFlowEntry[]>(() => data?.actualsEntries ?? [], [data]);
   const overdueItems = useMemo<OverdueItem[]>(() => data?.overdueItems ?? [], [data]);
   const overdueTotals = useMemo<OverdueTotals>(
     () => data?.overdueTotals ?? {
@@ -528,8 +528,7 @@ export default function Dashboard({ dateRange, onDateRangeChange }: Props) {
           ) : (
             <CashFlowChart
               entries={entries}
-              adjustedEntries={adjustedEntries}
-              hasOverdue={overdueItems.length > 0}
+              actualsEntries={actualsEntries}
               scrubIndex={scrubIndex}
               onScrubChange={handleScrubChange}
               horizon={horizon}

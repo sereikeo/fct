@@ -128,7 +128,6 @@ function buildChartSVG(
       }
       g += `<path d="${line}" fill="none" stroke="${adjColor}" stroke-width="1.8" stroke-dasharray="2,3" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/>`;
     });
-    g += `<text x="${xs(adjustedSeries.length - 1) - 6}" y="${ys(seriesDefs[0].getVal(adjustedSeries[adjustedSeries.length - 1])) + 16}" font-size="10.5" fill="${adjColor}" font-family="Inter,sans-serif" font-weight="600" text-anchor="end">net cash position</text>`;
   }
 
 
@@ -166,8 +165,7 @@ function buildChartSVG(
 
 interface Props {
   entries: CashFlowEntry[];
-  adjustedEntries: CashFlowEntry[];
-  hasOverdue: boolean;
+  actualsEntries: CashFlowEntry[];
   scrubIndex: number;
   onScrubChange: (i: number) => void;
   horizon: number;
@@ -176,12 +174,12 @@ interface Props {
 }
 
 export default function CashFlowChart({
-  entries, adjustedEntries, hasOverdue, scrubIndex, onScrubChange, horizon, onHorizonChange, bucketFilter,
+  entries, actualsEntries, scrubIndex, onScrubChange, horizon, onHorizonChange, bucketFilter,
 }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [readout, setReadout] = useState<ReadoutState | null>(null);
   const [dragging, setDragging] = useState(false);
-  const [showAdjusted, setShowAdjusted] = useState(false);
+  const [showActuals, setShowActuals] = useState(false);
 
   const series = useMemo<ChartSeries[]>(() =>
     entries.map((e, i) => ({
@@ -195,8 +193,8 @@ export default function CashFlowChart({
     [entries]
   );
 
-  const adjustedChartSeries = useMemo<ChartSeries[]>(() =>
-    adjustedEntries.map((e, i) => ({
+  const actualsChartSeries = useMemo<ChartSeries[]>(() =>
+    actualsEntries.map((e, i) => ({
       i,
       d: new Date(e.date + 'T00:00:00'),
       balP: e.balP,
@@ -204,16 +202,16 @@ export default function CashFlowChart({
       bal: e.balance,
       events: e.breakdown,
     })),
-    [adjustedEntries]
+    [actualsEntries]
   );
 
   useLayoutEffect(() => {
     if (!svgRef.current || series.length === 0) return;
-    const adj = showAdjusted && hasOverdue ? adjustedChartSeries : null;
+    const adj = showActuals ? actualsChartSeries : null;
     const { svgHTML, readout: ro } = buildChartSVG(series, adj, scrubIndex, bucketFilter);
     svgRef.current.innerHTML = svgHTML;
     setReadout(ro);
-  }, [series, adjustedChartSeries, showAdjusted, hasOverdue, scrubIndex, bucketFilter]);
+  }, [series, actualsChartSeries, showActuals, scrubIndex, bucketFilter]);
 
   function svgToIndex(clientX: number): number {
     if (!svgRef.current || series.length === 0) return 0;
@@ -300,17 +298,15 @@ export default function CashFlowChart({
 
       <div className="chart-head">
         <span className="lbl">Scrub · +{si}d from today</span>
-        {hasOverdue && (
-          <button
-            type="button"
-            className={`toggle-adj${showAdjusted ? ' on' : ''}`}
-            aria-pressed={showAdjusted ? 'true' : 'false'}
-            onClick={() => setShowAdjusted(v => !v)}
-            title="Show the balance with overdue bills deducted from today"
-          >
-            <span className="sw" /> Net Cash Position
-          </button>
-        )}
+        <button
+          type="button"
+          className={`toggle-adj${showActuals ? ' on' : ''}`}
+          aria-pressed={showActuals ? 'true' : 'false'}
+          onClick={() => setShowActuals(v => !v)}
+          title="Show balance if you stop all variable spending now"
+        >
+          <span className="sw" /> Actuals only
+        </button>
         <div className="seg" role="group">
           {([{ label: '1M', days: 30 }, { label: '3M', days: 90 }, { label: '6M', days: 180 }, { label: '1Y', days: 365 }]).map(({ label, days }) => (
             <button

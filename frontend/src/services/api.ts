@@ -61,7 +61,7 @@ export interface OverdueTotals {
 
 export interface CashFlowResponse {
   entries: CashFlowEntry[];
-  adjustedEntries: CashFlowEntry[];
+  actualsEntries: CashFlowEntry[];
   overdueItems: OverdueItem[];
   overdueTotals: OverdueTotals;
 }
