@@ -137,6 +137,7 @@ function VariableRow({ envelope, entries, monthlyBudget }: VariableRowProps) {
   const [editingBudget, setEditingBudget] = useState(false);
   const [budgetInput, setBudgetInput] = useState('');
   const budgetInputRef = useRef<HTMLInputElement>(null);
+  const submittedRef = useRef(false);
   const qc = useQueryClient();
   const period = currentPeriod();
 
@@ -144,19 +145,22 @@ function VariableRow({ envelope, entries, monthlyBudget }: VariableRowProps) {
     mutationFn: (amount: number) => patchEnvelope(envelope.id, { period, overrideAmount: amount }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: QUERY_KEYS.envelopes });
-      qc.invalidateQueries({ queryKey: QUERY_KEYS.cashflow('', '') });
+      qc.invalidateQueries({ queryKey: ['cashflow'] });
       setEditingBudget(false);
     },
   });
 
   function openBudgetEdit() {
+    submittedRef.current = false;
     setBudgetInput(String(monthlyBudget));
     setEditingBudget(true);
   }
 
   function commitBudgetEdit() {
+    if (submittedRef.current) return;
+    submittedRef.current = true;
     const val = parseFloat(budgetInput);
-    if (!isNaN(val) && val > 0 && val !== monthlyBudget) {
+    if (!isNaN(val) && val > 0) {
       overrideMutation.mutate(val);
     } else {
       setEditingBudget(false);
@@ -338,7 +342,8 @@ export default function EnvelopePanel({ bucketFilter = 'all' }: { bucketFilter?:
         ) : (
           envelopes.map((env) => {
             const occurrences = countOccurrencesInMonth(env.dueDate, env.frequency, env.recurInterval, year, month);
-            const monthlyBudget = env.forecastAmount * occurrences;
+            const periodOverride = env.overrides.find(o => o.period === period);
+            const monthlyBudget = periodOverride ? periodOverride.overrideAmount : env.forecastAmount * occurrences;
             return (
               <VariableRow
                 key={env.id}
