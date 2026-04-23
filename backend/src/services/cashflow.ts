@@ -405,7 +405,8 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
     // Envelope items (is_variable) bypass the transaction path entirely —
     // their spend entries are placed directly from spend_log below.
     const txItem = itemByPage.get(tx.notion_page_id);
-    if (txItem?.is_variable) continue;
+    if (!txItem) continue; // budget item deleted — skip its transactions
+    if (txItem.is_variable) continue;
 
     if (tx.confirmed === 1) {
       confirmedTxs.push(tx);
