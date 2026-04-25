@@ -30,12 +30,12 @@ function toEntry(row: SpendRow): SpendEntry {
 const PostSchema = z.object({
   budgetItemId: z.string().uuid(),
   date:         DateStr,
-  amount:       z.number().positive(),
+  amount:       z.number().refine(n => n !== 0, 'Amount cannot be zero'),
   note:         z.string().optional(),
 });
 
 const PatchSchema = z.object({
-  amount: z.number().positive().optional(),
+  amount: z.number().refine(n => n !== 0, 'Amount cannot be zero').optional(),
   note:   z.string().nullable().optional(),
 }).refine(d => Object.values(d).some(v => v !== undefined), {
   message: 'At least one field required',
