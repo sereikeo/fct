@@ -260,6 +260,18 @@ const stmtSyncUnconfirmedTx = db.prepare(`
   WHERE  id = @id AND confirmed = 0
 `);
 
+// Propagates label-only fields to every row for a notion_page_id, including
+// confirmed snapshots. Lets a tag/type/bucket fix in Notion flow downstream
+// without rewriting the financial state (amount, dates, frequency).
+const stmtSyncLabelsAll = db.prepare(`
+  UPDATE transactions
+  SET    name       = @name,
+         type       = @type,
+         bucket     = @bucket,
+         updated_at = datetime('now')
+  WHERE  notion_page_id = @notion_page_id
+`);
+
 function parseIsoDate(s: string): Date {
   const [y, m, d] = s.split('-').map(Number);
   return new Date(y, m - 1, d);
@@ -303,6 +315,13 @@ function updateTransactionLedger(row: {
   status: string;
 }): void {
   if (!row.due_date) return;
+
+  stmtSyncLabelsAll.run({
+    notion_page_id: row.notion_page_id,
+    name:           row.name,
+    type:           row.type,
+    bucket:         row.bucket,
+  });
 
   const existing = stmtGetUnconfirmedTx.get(row.notion_page_id) as TxRow | undefined;
   const isOnce = isOnceOff(row.frequency, row.recur_interval);
