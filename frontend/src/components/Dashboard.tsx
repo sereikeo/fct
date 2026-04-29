@@ -28,7 +28,7 @@ function CCStatementCard({ entries }: { entries: CashFlowEntry[] }) {
 
   const ccEntry = entries.find(e => e.breakdown.some(b => b.isCC && b.type === 'expense'));
   const ccItems = ccEntry ? ccEntry.breakdown.filter(b => b.isCC && b.type === 'expense') : [];
-  const ccTotal = ccItems.reduce((t, b) => t + (b.overrideAmount ?? b.forecastAmount), 0);
+  const ccTotal = ccItems.reduce((t, b) => t + (b.actualAmount ?? b.overrideAmount ?? b.forecastAmount), 0);
   const ccDate = ccEntry ? new Date(ccEntry.date + 'T00:00:00') : null;
 
   return (
@@ -53,7 +53,7 @@ function CCStatementCard({ entries }: { entries: CashFlowEntry[] }) {
           <div key={i} className="stmt-row">
             <div className="d">{ccDate ? fmtMD(ccDate) : '—'}</div>
             <div>{item.name}</div>
-            <div className="n">A${(item.overrideAmount ?? item.forecastAmount).toFixed(2)}</div>
+            <div className="n">A${(item.actualAmount ?? item.overrideAmount ?? item.forecastAmount).toFixed(2)}</div>
           </div>
         ))}
         {ccItems.length > 0 && (

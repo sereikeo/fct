@@ -244,7 +244,7 @@ export default function CashFlowChart({
 
   const ccEntry = entries.find(e => e.breakdown.some(b => b.isCC));
   const ccTotal = ccEntry
-    ? ccEntry.breakdown.filter(b => b.isCC).reduce((t, b) => t + (b.overrideAmount ?? b.forecastAmount), 0)
+    ? ccEntry.breakdown.filter(b => b.isCC).reduce((t, b) => t + (b.actualAmount ?? b.overrideAmount ?? b.forecastAmount), 0)
     : 0;
   const ccCount = ccEntry ? ccEntry.breakdown.filter(b => b.isCC).length : 0;
   const ccDate = ccEntry ? new Date(ccEntry.date + 'T00:00:00') : null;
