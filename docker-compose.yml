@@ -52,9 +52,10 @@ services:
     environment:
       REPO_URL: ${GITHUB_REPO_URL:-}
       ACCESS_TOKEN: ${GH_PAT:-}
-      RUNNER_NAME: fct-runner
+      RUNNER_NAME_PREFIX: fct-runner
       RUNNER_WORKDIR: /tmp/runner
       RUNNER_SCOPE: repo
+      EPHEMERAL: 'true'
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /volume1/docker/fct:/volume1/docker/fct
