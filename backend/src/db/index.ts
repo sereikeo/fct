@@ -30,6 +30,24 @@ if (!cols.some(c => c.name === 'is_envelope')) {
   db.exec('ALTER TABLE budget_items ADD COLUMN is_envelope INTEGER NOT NULL DEFAULT 0');
 }
 
+// spend_log.payment — added when cash/credit lanes were introduced. Backfill
+// existing rows from the parent envelope's payment field so behaviour matches
+// what was already happening: Credit envelopes → 'credit' lane, everything
+// else → 'cash' lane. Idempotent: only fires when the column is missing.
+const spendCols = db.pragma('table_info(spend_log)') as Array<{ name: string }>;
+if (spendCols.length > 0 && !spendCols.some(c => c.name === 'payment')) {
+  db.transaction(() => {
+    db.exec("ALTER TABLE spend_log ADD COLUMN payment TEXT NOT NULL DEFAULT 'cash' CHECK (payment IN ('cash', 'credit'))");
+    db.exec(`
+      UPDATE spend_log
+      SET    payment = 'credit'
+      WHERE  budget_item_id IN (
+        SELECT id FROM budget_items WHERE payment = 'Credit'
+      )
+    `);
+  })();
+}
+
 // Once-off items have a null frequency. Older DBs were created with frequency
 // NOT NULL — SQLite can't relax a column constraint via ALTER, so rebuild the
 // table when the old shape is detected. Idempotent: the check exits early

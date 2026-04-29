@@ -101,6 +101,7 @@ export interface SpendEntry {
   txId: string | null;
   date: string;
   amount: number;
+  payment: 'cash' | 'credit';
   note: string | null;
 }
 

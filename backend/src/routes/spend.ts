@@ -13,6 +13,7 @@ interface SpendRow {
   tx_id: string | null;
   date: string;
   amount: number;
+  payment: 'cash' | 'credit';
   note: string | null;
 }
 
@@ -23,6 +24,7 @@ function toEntry(row: SpendRow): SpendEntry {
     txId:         row.tx_id,
     date:         row.date,
     amount:       row.amount,
+    payment:      row.payment,
     note:         row.note,
   };
 }
@@ -31,18 +33,20 @@ const PostSchema = z.object({
   budgetItemId: z.string().uuid(),
   date:         DateStr,
   amount:       z.number().refine(n => n !== 0, 'Amount cannot be zero'),
+  payment:      z.enum(['cash', 'credit']).optional(),
   note:         z.string().optional(),
 });
 
 const PatchSchema = z.object({
-  amount: z.number().refine(n => n !== 0, 'Amount cannot be zero').optional(),
-  note:   z.string().nullable().optional(),
+  amount:  z.number().refine(n => n !== 0, 'Amount cannot be zero').optional(),
+  payment: z.enum(['cash', 'credit']).optional(),
+  note:    z.string().nullable().optional(),
 }).refine(d => Object.values(d).some(v => v !== undefined), {
   message: 'At least one field required',
 });
 
 const stmtFindItem = db.prepare(
-  'SELECT id, forecast_amount FROM budget_items WHERE id = ? AND deleted_at IS NULL'
+  'SELECT id, forecast_amount, payment FROM budget_items WHERE id = ? AND deleted_at IS NULL'
 );
 
 // Find the tx occurrence this spend belongs to: prefer confirmed, fall back to
@@ -65,8 +69,8 @@ const stmtAllForPeriod = db.prepare(
 const stmtById = db.prepare('SELECT * FROM spend_log WHERE id = ?');
 
 const stmtInsert = db.prepare(`
-  INSERT INTO spend_log (id, budget_item_id, tx_id, date, amount, note)
-  VALUES (@id, @budget_item_id, @tx_id, @date, @amount, @note)
+  INSERT INTO spend_log (id, budget_item_id, tx_id, date, amount, payment, note)
+  VALUES (@id, @budget_item_id, @tx_id, @date, @amount, @payment, @note)
 `);
 
 const stmtDelete = db.prepare('DELETE FROM spend_log WHERE id = ?');
@@ -113,9 +117,16 @@ spendRouter.post('/', (req, res) => {
 
   const { budgetItemId, date, amount, note } = result.data;
 
-  if (!stmtFindItem.get(budgetItemId)) {
+  const item = stmtFindItem.get(budgetItemId) as
+    { id: string; forecast_amount: number; payment: string } | undefined;
+  if (!item) {
     return res.status(404).json({ error: 'Budget item not found', code: 'NOT_FOUND' });
   }
+
+  // Default lane from the envelope: Credit envelopes default to 'credit',
+  // everything else defaults to 'cash'. The client can override per entry.
+  const payment: 'cash' | 'credit' =
+    result.data.payment ?? (item.payment === 'Credit' ? 'credit' : 'cash');
 
   const tx = stmtFindTx.get({ budget_item_id: budgetItemId, date }) as
     { id: string; current_amount: number; forecast_amount: number } | undefined;
@@ -127,12 +138,13 @@ spendRouter.post('/', (req, res) => {
     tx_id:          tx?.id ?? null,
     date,
     amount,
+    payment,
     note:           note ?? null,
   });
 
   if (tx) recomputeTxAmount(tx.id);
 
-  return res.status(201).json({ entry: toEntry({ id, budget_item_id: budgetItemId, tx_id: tx?.id ?? null, date, amount, note: note ?? null }) });
+  return res.status(201).json({ entry: toEntry({ id, budget_item_id: budgetItemId, tx_id: tx?.id ?? null, date, amount, payment, note: note ?? null }) });
 });
 
 // PATCH /api/spend/:id
@@ -155,8 +167,9 @@ spendRouter.patch('/:id', (req, res) => {
   const body = bodyResult.data;
   const sets: string[] = [];
   const vals: unknown[] = [];
-  if (body.amount !== undefined) { sets.push('amount = ?'); vals.push(body.amount); }
-  if (body.note   !== undefined) { sets.push('note = ?');   vals.push(body.note); }
+  if (body.amount  !== undefined) { sets.push('amount = ?');  vals.push(body.amount); }
+  if (body.payment !== undefined) { sets.push('payment = ?'); vals.push(body.payment); }
+  if (body.note    !== undefined) { sets.push('note = ?');    vals.push(body.note); }
   sets.push("updated_at = datetime('now')");
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

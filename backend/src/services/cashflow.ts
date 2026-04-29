@@ -274,7 +274,7 @@ const stmtOverrides    = db.prepare('SELECT budget_item_id, period, override_amo
 const stmtRecons       = db.prepare('SELECT budget_item_id, date, actual_amount, delta FROM reconciliation');
 const stmtTransactions = db.prepare('SELECT * FROM transactions');
 const stmtSpendLog     = db.prepare(`
-  SELECT sl.budget_item_id, sl.date, sl.amount
+  SELECT sl.budget_item_id, sl.date, sl.amount, sl.payment
   FROM   spend_log sl
   JOIN   budget_items bi ON bi.id = sl.budget_item_id
   WHERE  bi.deleted_at IS NULL
@@ -348,7 +348,7 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
   const recons       = stmtRecons.all()       as ReconRow[];
   const transactions = stmtTransactions.all() as TxRow[];
 
-  interface SpendLogRow { budget_item_id: string; date: string; amount: number; }
+  interface SpendLogRow { budget_item_id: string; date: string; amount: number; payment: 'cash' | 'credit'; }
   const spendRows = stmtSpendLog.all() as SpendLogRow[];
   const spendByItemPeriod = new Map<string, SpendLogRow[]>();
   for (const s of spendRows) {
@@ -618,28 +618,42 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
 
     const periodsSeen = new Set<string>();
 
+    // Lane-aware: each spend entry is routed by its own payment lane (cash →
+    // direct cash-flow hit, credit → bundled into next CC statement). The
+    // forecast remainder draws down only the lane that matches the envelope's
+    // default payment — the other lane is purely additive on top of forecast.
+    const matchingLane: 'cash' | 'credit' =
+      item.payment === 'Credit' ? 'credit' : 'cash';
+
     for (const occDate of occDates) {
       const period = fmtPeriod(occDate);
       if (periodsSeen.has(period)) continue;
       periodsSeen.add(period);
 
-      const entries    = spendByItemPeriod.get(`${item.id}:${period}`) ?? [];
-      const totalSpent = entries.reduce((t, e) => t + e.amount, 0);
-      const cap        = overrideMap.get(`${item.id}:${period}`) ?? item.forecast_amount;
-      const remaining  = Math.max(0, cap - totalSpent);
+      const entries       = spendByItemPeriod.get(`${item.id}:${period}`) ?? [];
+      const matchingTotal = entries
+        .filter(e => e.payment === matchingLane)
+        .reduce((t, e) => t + e.amount, 0);
+      const cap           = overrideMap.get(`${item.id}:${period}`) ?? item.forecast_amount;
+      const remaining     = Math.max(0, cap - matchingTotal);
 
-      // Place each actual spend entry on its real date.
+      // Place each actual spend entry on its real date, routed by its own
+      // lane: 'credit' → CC bundling, 'cash' → direct balance hit. The
+      // routing key ('Credit' triggers placeOnDay's CC branch) is separate
+      // from the display label shown in the LineItem.
       for (const entry of entries) {
         if (entry.date < walkStartStr || entry.date > to) continue;
+        const isCreditLane = entry.payment === 'credit';
+        const routeKey     = isCreditLane ? 'Credit' : 'Cash';
         placeOnDay(
           {
             date: entry.date, budgetItemId: item.id, name: item.name,
             category: item.category, type: item.type, bucket: item.bucket,
-            payment: item.payment, forecastAmount: 0,
+            payment: routeKey, forecastAmount: 0,
             overrideAmount: null, actualAmount: entry.amount,
             delta: null, isReconciled: true,
           },
-          item.payment, entry.date,
+          routeKey, entry.date,
           { isConfirmed: true, isPending: false, isProjected: false },
         );
       }

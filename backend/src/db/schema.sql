@@ -73,6 +73,7 @@ CREATE TABLE IF NOT EXISTS spend_log (
   tx_id           TEXT REFERENCES transactions(id),
   date            TEXT NOT NULL,
   amount          REAL NOT NULL,
+  payment         TEXT NOT NULL DEFAULT 'cash' CHECK (payment IN ('cash', 'credit')),
   note            TEXT,
   created_at      TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at      TEXT NOT NULL DEFAULT (datetime('now'))

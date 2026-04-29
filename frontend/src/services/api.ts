@@ -111,6 +111,7 @@ export interface SpendEntry {
   txId: string | null;
   date: string;
   amount: number;
+  payment: 'cash' | 'credit';
   note: string | null;
 }
 
@@ -186,6 +187,7 @@ export async function postSpend(body: {
   budgetItemId: string;
   date: string;
   amount: number;
+  payment?: 'cash' | 'credit';
   note?: string;
 }): Promise<SpendEntry> {
   const { data } = await client.post('/spend', body);

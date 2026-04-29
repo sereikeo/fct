@@ -61,12 +61,16 @@ function QuickAdd({ envelope, onClose }: QuickAddProps) {
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [payment, setPayment] = useState<'cash' | 'credit'>(
+    envelope.payment === 'Credit' ? 'credit' : 'cash'
+  );
 
   const add = useMutation({
     mutationFn: () => postSpend({
       budgetItemId: envelope.id,
       date,
       amount: parseFloat(amount),
+      payment,
       note: note || undefined,
     }),
     onSuccess: () => {
@@ -82,12 +86,20 @@ function QuickAdd({ envelope, onClose }: QuickAddProps) {
     fontFamily: 'JetBrains Mono, monospace', outline: 'none',
   };
 
+  const segBtn = (active: boolean): React.CSSProperties => ({
+    background: active ? 'var(--ink)' : 'transparent',
+    color: active ? 'var(--paper)' : 'var(--ink-2)',
+    border: 'none', borderRadius: 4, padding: '3px 8px',
+    fontSize: 11, fontWeight: 500, cursor: 'pointer',
+    fontFamily: 'Inter, sans-serif',
+  });
+
   return (
     <div style={{
       marginTop: 8, padding: '10px 12px',
       background: 'var(--paper-2)', borderRadius: 8,
       border: '1px solid var(--line-2)',
-      display: 'grid', gridTemplateColumns: '1fr 1fr auto auto', gap: 6, alignItems: 'center',
+      display: 'grid', gridTemplateColumns: '1fr 1fr auto auto auto', gap: 6, alignItems: 'center',
     }}>
       <input
         autoFocus
@@ -111,6 +123,13 @@ function QuickAdd({ envelope, onClose }: QuickAddProps) {
         onChange={(e) => setDate(e.target.value)}
         style={{ ...inputStyle, fontSize: 11.5 }}
       />
+      <div style={{
+        display: 'flex', background: 'var(--paper)',
+        border: '1px solid var(--line)', borderRadius: 6, padding: 1,
+      }}>
+        <button type="button" onClick={() => setPayment('cash')} style={segBtn(payment === 'cash')}>Cash</button>
+        <button type="button" onClick={() => setPayment('credit')} style={segBtn(payment === 'credit')}>CC</button>
+      </div>
       <div style={{ display: 'flex', gap: 4 }}>
         <button
           className="btn"
@@ -172,6 +191,8 @@ function VariableRow({ envelope, entries, monthlyBudget }: VariableRowProps) {
   }, [editingBudget]);
 
   const actualSpend = entries.reduce((sum, e) => sum + e.amount, 0);
+  const cashSpend   = entries.filter(e => e.payment === 'cash').reduce((s, e) => s + e.amount, 0);
+  const creditSpend = entries.filter(e => e.payment === 'credit').reduce((s, e) => s + e.amount, 0);
 
   const now = new Date();
   const totalDays = daysInMonth(now.getFullYear(), now.getMonth());
@@ -222,7 +243,14 @@ function VariableRow({ envelope, entries, monthlyBudget }: VariableRowProps) {
               : 'no spend logged'}
           </div>
           <div className="s" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            {actualSpend > 0 ? `${fmtAUD(actualSpend)} of ` : 'budget '}
+            {actualSpend > 0 ? (
+              <>
+                {cashSpend > 0 && <span>{fmtAUD(cashSpend)} cash</span>}
+                {cashSpend > 0 && creditSpend > 0 && <span style={{ color: 'var(--mute)' }}>·</span>}
+                {creditSpend > 0 && <span style={{ color: 'var(--cc)' }}>{fmtAUD(creditSpend)} CC</span>}
+                <span style={{ color: 'var(--mute)' }}>of</span>
+              </>
+            ) : 'budget '}
             {editingBudget ? (
               <input
                 ref={budgetInputRef}
@@ -263,10 +291,12 @@ function VariableRow({ envelope, entries, monthlyBudget }: VariableRowProps) {
           {entries.map((e) => (
             <div key={e.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5, color: 'var(--ink-2)', padding: '2px 0' }}>
               <span style={{ color: 'var(--mute)' }}>
-                {e.date.slice(5)}{e.note ? ` · ${e.note}` : ''}
+                {e.date.slice(5)}
+                {e.payment === 'credit' && <span title="Paid by credit card" style={{ color: 'var(--cc)', marginLeft: 4 }}>◆</span>}
+                {e.note ? ` · ${e.note}` : ''}
                 {!e.txId && <span title="No confirmed occurrence found — balance not adjusted" style={{ color: 'var(--accent)', marginLeft: 4 }}>⚠</span>}
               </span>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'JetBrains Mono, monospace' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'JetBrains Mono, monospace', color: e.payment === 'credit' ? 'var(--cc)' : undefined }}>
                 {fmtAUD(e.amount)}
                 <button
                   onClick={() => remove.mutate(e.id)}
