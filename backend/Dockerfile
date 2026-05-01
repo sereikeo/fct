@@ -8,6 +8,8 @@ RUN mkdir -p /app/dist/db && cp /app/src/db/schema.sql /app/dist/db/schema.sql
 
 FROM node:20-alpine
 WORKDIR /app
+RUN apk add --no-cache tzdata
+ENV TZ=Australia/Sydney
 COPY package*.json ./
 RUN npm install --omit=dev
 COPY --from=builder /app/dist ./dist
