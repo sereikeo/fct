@@ -226,7 +226,7 @@ const stmtInsertConfirmedTx = db.prepare(`
     expected_date, amount, confirmed, confirmed_date
   ) VALUES (
     @id, @notion_page_id, @name, @type, @bucket, @frequency, @recur_interval,
-    @expected_date, @amount, 1, date('now')
+    @expected_date, @amount, 1, @confirmed_date
   )
 `);
 
@@ -241,7 +241,7 @@ const stmtDeleteTx = db.prepare('DELETE FROM transactions WHERE id = ?');
 // record reflects what was actually paid, not a stale per-cycle figure.
 const stmtConfirmTx = db.prepare(`
   UPDATE transactions
-  SET    confirmed = 1, confirmed_date = date('now'), amount = @amount, updated_at = datetime('now')
+  SET    confirmed = 1, confirmed_date = @confirmed_date, amount = @amount, updated_at = datetime('now')
   WHERE  id = @id
 `);
 
@@ -275,6 +275,18 @@ const stmtSyncLabelsAll = db.prepare(`
 function parseIsoDate(s: string): Date {
   const [y, m, d] = s.split('-').map(Number);
   return new Date(y, m - 1, d);
+}
+
+// Local-time YYYY-MM-DD. SQLite's date('now') resolves in UTC, which stamps
+// yesterday's date for any sync that runs before the local day rolls in UTC
+// (e.g. early-morning AEST is still the previous UTC date).
+function localToday(): string {
+  const d = new Date();
+  return (
+    `${d.getFullYear()}-` +
+    `${String(d.getMonth() + 1).padStart(2, '0')}-` +
+    `${String(d.getDate()).padStart(2, '0')}`
+  );
 }
 
 function clampLastDay(year: number, month: number, day: number): Date {
@@ -352,20 +364,21 @@ function updateTransactionLedger(row: {
     amount:         row.forecast_amount,
   });
 
+  const today = localToday();
+
   if (isOnce) {
     const confirmedRow = stmtGetConfirmedOnceTx.get(row.notion_page_id) as { id: string } | undefined;
     if (confirmedRow) return; // confirmed snapshot exists — never overwrite
 
-    const today = new Date().toISOString().slice(0, 10);
-    const isDue  = row.due_date <= today;
+    const isDue = row.due_date <= today;
 
     if (isDue) {
       // Once-offs are auto-confirmed on or after their due date.
       // No Notion automation or status change required.
       if (existing) {
-        stmtConfirmTx.run({ id: existing.id, amount: row.forecast_amount });
+        stmtConfirmTx.run({ id: existing.id, amount: row.forecast_amount, confirmed_date: today });
       } else {
-        stmtInsertConfirmedTx.run(insertArgs());
+        stmtInsertConfirmedTx.run({ ...insertArgs(), confirmed_date: today });
       }
     } else {
       // Future once-off — keep as a projected unconfirmed entry.
@@ -392,7 +405,7 @@ function updateTransactionLedger(row: {
 
   if (currentDue >= nextCycle) {
     // Notion advanced by ≥ one full interval → previous cycle was paid.
-    stmtConfirmTx.run({ id: existing.id, amount: row.forecast_amount });
+    stmtConfirmTx.run({ id: existing.id, amount: row.forecast_amount, confirmed_date: today });
     stmtInsertTx.run(insertArgs());
     return;
   }

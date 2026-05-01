@@ -40,6 +40,7 @@ Browser → Cloudflare Access (GitHub OAuth) → Cloudflare Tunnel → Caddy →
 | DB | SQLite (NAS volume mount) | Local, zero latency, no cloud dependency |
 | Proxy | Caddy | HTTPS termination, CORS, routing — matches fitness-tracker setup |
 | Containers | Docker Compose | Same pattern as fitness-tracker |
+| Docker | Docker  | **IMPORTANT** : Uses V1 docker for now |
 | CI/CD | GitHub Actions, self-hosted runner on NAS | Push to main → docker compose pull && up -d |
 
 ---
@@ -137,7 +138,7 @@ Core server-side logic in `backend/src/services/cashflow.ts`. Accepts `from`, `t
 3. Apply `envelope_overrides` — replace `forecastAmount` for the relevant month
 4. Apply `reconciliation` deltas — shift balance by `actual - forecast` on the reconciliation date
 5. **Bundle CC items** — items where `payment = 'Credit'` accumulate into the CC statement. They do NOT appear as individual deductions on their due dates. Instead, a single CC statement deduction lands on the CC statement due date. This is a key design behaviour — credit purchases are invisible in the balance until statement day.
-6. **Partition overdue items** — when `FCT_OPENING_BALANCE_DATE` is set, any budget item with `due_date < FCT_OPENING_BALANCE_DATE` is treated as overdue (Notion's automation advances the `due_date` only when a bill is marked paid, so a past date means unpaid). For each overdue item, the engine steps forward from `due_date` in the item's frequency cadence and counts occurrences before `FCT_OPENING_BALANCE_DATE` — that count is `missedCycles`, and `totalOwed = forecastAmount × missedCycles` is the real liability. Overdue cards are suppressed from the forward projection entirely and surfaced in a separate `overdueItems` array; `overdueTotals` per bucket sum `totalOwed`.
+6. **Partition overdue items** — any unconfirmed transaction with `expected_date <= today` is treated as overdue (Notion's automation advances the `due_date` only when a bill is marked paid, so a past-or-current date with no FCT confirmation means awaiting). For each overdue item, the engine steps forward from `expected_date` in the item's frequency cadence and counts occurrences up to today — that count is `missedCycles`, and `totalOwed = forecastAmount × missedCycles` is the real liability. Overdue cards are suppressed from the forward projection entirely and surfaced in a separate `overdueItems` array; `overdueTotals` per bucket sum `totalOwed`.
 7. Compute running balance day-by-day. Seed is valid at `FCT_OPENING_BALANCE_DATE` (or `from` if unset). If the seed date is before `from`, the engine walks seed → from first to arrive at the correct seed, emitting entries only within `[from, to]`.
 8. **adjustedEntries** — the same series as `entries` but shifted by the net overdue impact per bucket (`owedIn − owedOut`). Income you're owed raises the balance; bills you owe lower it. Lets the frontend toggle between "forecast as-is" and "if everything overdue were resolved".
 
@@ -340,10 +341,10 @@ Three tables: `budget_items`, `envelope_overrides`, `reconciliation`. See Data D
 | `FCT_OPENING_BALANCE` | backend | `0` | Starting cash balance for engine |
 | `FCT_OPENING_BALANCE_PERSONAL` | backend | — | Personal bucket starting balance |
 | `FCT_OPENING_BALANCE_MAPLE` | backend | — | Maple bucket starting balance |
-| `FCT_OPENING_BALANCE_DATE` | backend | — | ISO-8601 date the opening balance is valid at. Items with `due_date < this` are treated as overdue/unpaid and surfaced via `overdueItems`. When set and before `from`, the engine walks seed → from to arrive at the correct seed. |
+| `FCT_OPENING_BALANCE_DATE` | backend | — | ISO-8601 date the opening balance is valid at. When set and before `from`, the engine walks seed → from to arrive at the correct seed. (Overdue detection is anchored to *today*, not this date — see step 6.) |
 | `SYNC_INTERVAL_MS` | backend | `300000` | Notion poll interval (5 min) |
-| `CC_STMT_DUE_DAY` | backend | `25` | Day of month CC statement is due |
-| `CC_STMT_CLOSE_DAY` | backend | `12` | Day of month CC statement closes |
+| `CC_STMT_DUE_DAY` | backend | `04` | Day of month CC statement is due |
+| `CC_STMT_CLOSE_DAY` | backend | `07` | Day of month CC statement closes |
 | `LOW_BALANCE_ALERT` | backend | `3500` | Threshold for low-balance alert |
 | `PORT` | backend | `3001` | Express HTTP port |
 

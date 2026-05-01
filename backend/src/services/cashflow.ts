@@ -377,15 +377,15 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
   for (const item of items) itemByPage.set(item.notion_page_id, item);
 
   // Partition transactions into overdue, confirmed, and projected.
-  //   - Overdue: unconfirmed AND expected_date <= openingBalanceDate. The day
-  //     has arrived (or passed) without user acknowledgement. Surfaced via
-  //     overdueItems/overdueTotals AND placed in the breakdown on expected_date
-  //     so today's awaiting-ack rows still appear in the chart-day view.
-  //     Balance is NOT moved (the real debit/credit hasn't happened yet).
+  //   - Overdue: unconfirmed AND expected_date <= today. The day has arrived
+  //     (or passed) without user acknowledgement. Surfaced via overdueItems/
+  //     overdueTotals AND placed in the breakdown on expected_date so today's
+  //     awaiting-ack rows still appear in the chart-day view. Balance is NOT
+  //     moved (the real debit/credit hasn't happened yet).
   //   - Confirmed: moves the balance on its cash-effect date (confirmed_date,
   //     or the statement due date for CC items).
-  //   - Projected: unconfirmed AND expected_date > openingBalanceDate. Genuine
-  //     forecast — moves the balance as if paid on time.
+  //   - Projected: unconfirmed AND expected_date > today. Genuine forecast —
+  //     moves the balance as if paid on time.
   //
   // Future cycles are still forecast for overdue items — the card being
   // overdue only means the *current* cycle hasn't been ack'd, not that the
@@ -416,14 +416,14 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
 
     unconfirmedExpectedByPage.set(tx.notion_page_id, tx.expected_date);
 
-    if (openingBalanceDate && tx.expected_date <= openingBalanceDate) {
+    if (tx.expected_date <= todayStr) {
       const item = itemByPage.get(tx.notion_page_id);
       const frequency = (tx.frequency ?? item?.frequency ?? 'once') as ItemRow['frequency'];
       const interval  = Math.max(1, tx.recur_interval ?? item?.recur_interval ?? 1);
       const expected  = parseDate(tx.expected_date);
-      const missedCycles = countMissedCycles(frequency, interval, expected, seedDate);
+      const missedCycles = countMissedCycles(frequency, interval, expected, todayDate);
       const totalOwed    = tx.amount * missedCycles;
-      const daysOverdue  = Math.round((seedDate.getTime() - expected.getTime()) / 86_400_000);
+      const daysOverdue  = Math.round((todayDate.getTime() - expected.getTime()) / 86_400_000);
       overdueItems.push({
         budgetItemId:   item?.id ?? tx.notion_page_id,
         name:           tx.name,
@@ -508,10 +508,10 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
     let occ = occurrenceFrom(item, tx, tx.confirmed_date);
 
     const expDate = tx.expected_date;
-    if (openingBalanceDate && expDate && expDate <= openingBalanceDate) {
+    if (expDate && expDate <= todayStr) {
       const freq     = (tx.frequency ?? item?.frequency ?? 'once') as ItemRow['frequency'];
       const interval = Math.max(1, tx.recur_interval ?? item?.recur_interval ?? 1);
-      const missed   = countMissedCycles(freq, interval, parseDate(expDate), seedDate);
+      const missed   = countMissedCycles(freq, interval, parseDate(expDate), todayDate);
       if (missed > 1) occ = { ...occ, forecastAmount: tx.amount * missed };
     }
 
