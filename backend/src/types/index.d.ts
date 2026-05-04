@@ -43,6 +43,10 @@ export interface LineItem {
   category: string;
   type: BudgetItemType;
   bucket: Bucket;
+  // Real transaction/spend date. For non-CC items this equals the parent
+  // CashFlowEntry.date; for CC items it's the original spend date (the parent
+  // entry's date is the statement-due date the spend is bundled onto).
+  date: string;
   forecastAmount: number;
   overrideAmount: number | null;
   actualAmount: number | null;

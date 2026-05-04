@@ -63,13 +63,16 @@ function CCStatementCard({ entries, ccConfig }: { entries: CashFlowEntry[]; ccCo
         </button>
       )}
       <div className={`stmt-items${open ? ' open' : ''}`}>
-        {ccItems.map((item, i) => (
-          <div key={i} className="stmt-row">
-            <div className="d">{ccDate ? fmtMD(ccDate) : '—'}</div>
-            <div>{item.name}</div>
-            <div className="n">A${(item.actualAmount ?? item.overrideAmount ?? item.forecastAmount).toFixed(2)}</div>
-          </div>
-        ))}
+        {ccItems.map((item, i) => {
+          const txDate = item.date ? new Date(item.date + 'T00:00:00') : ccDate;
+          return (
+            <div key={i} className="stmt-row">
+              <div className="d">{txDate ? fmtMD(txDate) : '—'}</div>
+              <div>{item.name}</div>
+              <div className="n">A${(item.actualAmount ?? item.overrideAmount ?? item.forecastAmount).toFixed(2)}</div>
+            </div>
+          );
+        })}
         {ccItems.length > 0 && (
           <div className="stmt-row" style={{ borderTop: '1px solid rgba(91,59,138,0.2)', marginTop: 4, paddingTop: 8, fontWeight: 600 }}>
             <div /><div>TOTAL</div>

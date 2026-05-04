@@ -274,7 +274,7 @@ const stmtOverrides    = db.prepare('SELECT budget_item_id, period, override_amo
 const stmtRecons       = db.prepare('SELECT budget_item_id, date, actual_amount, delta FROM reconciliation');
 const stmtTransactions = db.prepare('SELECT * FROM transactions');
 const stmtSpendLog     = db.prepare(`
-  SELECT sl.budget_item_id, sl.date, sl.amount, sl.payment
+  SELECT sl.budget_item_id, sl.date, sl.amount, sl.payment, sl.note
   FROM   spend_log sl
   JOIN   budget_items bi ON bi.id = sl.budget_item_id
   WHERE  bi.deleted_at IS NULL
@@ -348,7 +348,7 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
   const recons       = stmtRecons.all()       as ReconRow[];
   const transactions = stmtTransactions.all() as TxRow[];
 
-  interface SpendLogRow { budget_item_id: string; date: string; amount: number; payment: 'cash' | 'credit'; }
+  interface SpendLogRow { budget_item_id: string; date: string; amount: number; payment: 'cash' | 'credit'; note: string | null; }
   const spendRows = stmtSpendLog.all() as SpendLogRow[];
   const spendByItemPeriod = new Map<string, SpendLogRow[]>();
   for (const s of spendRows) {
@@ -650,9 +650,15 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
         // which it already gates against walkStart.
         if (!isCreditLane && entry.date < walkStartStr) continue;
         const routeKey     = isCreditLane ? 'Credit' : 'Cash';
+        // Display name prefers the per-spend note (what the user typed when
+        // logging it — e.g. "Coffee at Bell Lane"), falling back to the
+        // envelope name when the note is empty. Without this, every entry
+        // shows up as the envelope name (e.g. "Personal Spend") in the CC
+        // tile, ledger, and on-this-date card.
+        const displayName = entry.note?.trim() ? entry.note.trim() : item.name;
         placeOnDay(
           {
-            date: entry.date, budgetItemId: item.id, name: item.name,
+            date: entry.date, budgetItemId: item.id, name: displayName,
             category: item.category, type: item.type, bucket: item.bucket,
             payment: routeKey, forecastAmount: 0,
             overrideAmount: null, actualAmount: entry.amount,
@@ -699,9 +705,12 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
     if (s.date.slice(0, 7) >= currentPeriod) continue;
     const item = itemById.get(s.budget_item_id);
     if (!item) continue;
+    // Same note-vs-envelope name preference as step 5 above — keep them in
+    // sync or we'll get inconsistent labels between current and prior periods.
+    const displayName = s.note?.trim() ? s.note.trim() : item.name;
     placeOnDay(
       {
-        date: s.date, budgetItemId: item.id, name: item.name,
+        date: s.date, budgetItemId: item.id, name: displayName,
         category: item.category, type: item.type, bucket: item.bucket,
         payment: 'Credit', forecastAmount: 0,
         overrideAmount: null, actualAmount: s.amount,
@@ -787,6 +796,7 @@ function makeLineItem(
     category:       occ.category ?? '',
     type:           occ.type,
     bucket:         occ.bucket,
+    date:           occ.date,
     forecastAmount: occ.forecastAmount,
     overrideAmount: occ.overrideAmount,
     actualAmount:   occ.actualAmount,

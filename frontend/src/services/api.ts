@@ -15,6 +15,7 @@ export interface LineItem {
   category: string;
   type: BudgetItemType;
   bucket: Bucket;
+  date: string;
   forecastAmount: number;
   overrideAmount: number | null;
   actualAmount: number | null;
