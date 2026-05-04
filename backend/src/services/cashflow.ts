@@ -688,6 +688,30 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
     }
   }
 
+  // 5b. Past-period credit spend. The envelope loop only walks occurrences
+  //     within [walkStart, toDate], so periods strictly before currentPeriod
+  //     are never visited. Cash spend in those periods has already settled
+  //     against the bank; credit spend is still outstanding on the card and
+  //     bundles onto the upcoming statement.
+  const itemById = new Map(items.map(i => [i.id, i] as const));
+  for (const s of spendRows) {
+    if (s.payment !== 'credit') continue;
+    if (s.date.slice(0, 7) >= currentPeriod) continue;
+    const item = itemById.get(s.budget_item_id);
+    if (!item) continue;
+    placeOnDay(
+      {
+        date: s.date, budgetItemId: item.id, name: item.name,
+        category: item.category, type: item.type, bucket: item.bucket,
+        payment: 'Credit', forecastAmount: 0,
+        overrideAmount: null, actualAmount: s.amount,
+        delta: null, isReconciled: true,
+      },
+      'Credit', s.date,
+      { isConfirmed: true, isPending: false, isProjected: false },
+    );
+  }
+
   // Day-by-day balance computation
   let balP = initBalP,  balM = initBalM;
   let actP = initBalP,  actM = initBalM;
