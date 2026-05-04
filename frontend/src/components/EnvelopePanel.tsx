@@ -13,6 +13,17 @@ function currentPeriod(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
+function shiftPeriod(period: string, delta: number): string {
+  const [y, m] = period.split('-').map(Number);
+  const d = new Date(y, m - 1 + delta, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function periodLabel(period: string): string {
+  const [y, m] = period.split('-').map(Number);
+  return new Date(y, m - 1, 1).toLocaleDateString('en-AU', { month: 'short', year: 'numeric' });
+}
+
 function daysInMonth(year: number, month: number): number {
   return new Date(year, month + 1, 0).getDate();
 }
@@ -52,15 +63,19 @@ function countOccurrencesInMonth(
 
 interface QuickAddProps {
   envelope: EnvelopeWithOverride;
+  period: string;
   onClose: () => void;
 }
 
-function QuickAdd({ envelope, onClose }: QuickAddProps) {
+function QuickAdd({ envelope, period, onClose }: QuickAddProps) {
   const qc = useQueryClient();
-  const period = currentPeriod();
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(() => {
+    if (period === currentPeriod()) return new Date().toISOString().slice(0, 10);
+    const [y, m] = period.split('-').map(Number);
+    return `${period}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}`;
+  });
   const [payment, setPayment] = useState<'cash' | 'credit'>(
     envelope.payment === 'Credit' ? 'credit' : 'cash'
   );
@@ -149,16 +164,17 @@ interface VariableRowProps {
   envelope: EnvelopeWithOverride;
   entries: SpendEntry[];
   monthlyBudget: number;
+  period: string;
 }
 
-function VariableRow({ envelope, entries, monthlyBudget }: VariableRowProps) {
+function VariableRow({ envelope, entries, monthlyBudget, period }: VariableRowProps) {
   const [adding, setAdding] = useState(false);
   const [editingBudget, setEditingBudget] = useState(false);
   const [budgetInput, setBudgetInput] = useState('');
   const budgetInputRef = useRef<HTMLInputElement>(null);
   const submittedRef = useRef(false);
   const qc = useQueryClient();
-  const period = currentPeriod();
+  const isCurrent = period === currentPeriod();
 
   const overrideMutation = useMutation({
     mutationFn: (amount: number) => patchEnvelope(envelope.id, { period, overrideAmount: amount }),
@@ -201,7 +217,7 @@ function VariableRow({ envelope, entries, monthlyBudget }: VariableRowProps) {
 
   const pct = monthlyBudget > 0 ? Math.min(100, (actualSpend / monthlyBudget) * 100) : 0;
   const overBudget  = actualSpend > monthlyBudget;
-  const aheadOfPace = !overBudget && actualSpend > proRataTarget;
+  const aheadOfPace = isCurrent && !overBudget && actualSpend > proRataTarget;
   const fillCls = overBudget ? 'fill over' : aheadOfPace ? 'fill' : 'fill good';
 
   const remove = useMutation({
@@ -224,13 +240,15 @@ function VariableRow({ envelope, entries, monthlyBudget }: VariableRowProps) {
             <div style={{ overflow: 'hidden', height: '100%', borderRadius: 7, position: 'relative' }}>
               <div className={fillCls} style={{ width: `${pct}%` }} />
             </div>
-            <div
-              title={`Day ${now.getDate()} of ${totalDays} — on-pace: ${fmtAUD(proRataTarget)}`}
-              style={{
-                position: 'absolute', top: -3, bottom: -3, left: `${proRataPct}%`,
-                width: 2, background: 'var(--ink-2)', opacity: 0.4, borderRadius: 1,
-              }}
-            />
+            {isCurrent && (
+              <div
+                title={`Day ${now.getDate()} of ${totalDays} — on-pace: ${fmtAUD(proRataTarget)}`}
+                style={{
+                  position: 'absolute', top: -3, bottom: -3, left: `${proRataPct}%`,
+                  width: 2, background: 'var(--ink-2)', opacity: 0.4, borderRadius: 1,
+                }}
+              />
+            )}
             <div style={{ position: 'absolute', top: -2, bottom: -2, left: '100%', width: 2, background: 'var(--ink)', opacity: 0.25 }} />
           </div>
         </div>
@@ -284,7 +302,7 @@ function VariableRow({ envelope, entries, monthlyBudget }: VariableRowProps) {
         </div>
       </div>
 
-      {adding && <QuickAdd envelope={envelope} onClose={() => setAdding(false)} />}
+      {adding && <QuickAdd envelope={envelope} period={period} onClose={() => setAdding(false)} />}
 
       {entries.length > 0 && (
         <div style={{ paddingLeft: 4, marginTop: 4 }}>
@@ -312,7 +330,8 @@ function VariableRow({ envelope, entries, monthlyBudget }: VariableRowProps) {
 }
 
 export default function EnvelopePanel({ bucketFilter = 'all' }: { bucketFilter?: 'all' | 'personal' | 'maple' }) {
-  const period = currentPeriod();
+  const [period, setPeriod] = useState(currentPeriod());
+  const isCurrent = period === currentPeriod();
 
   const { data: envData, isLoading, isError } = useQuery({
     queryKey: QUERY_KEYS.envelopes,
@@ -323,10 +342,12 @@ export default function EnvelopePanel({ bucketFilter = 'all' }: { bucketFilter?:
     queryFn: () => getSpend(period),
   });
 
+  const headerTitle = isCurrent ? 'this month' : periodLabel(period);
+
   if (isLoading) {
     return (
       <div className="card">
-        <div className="hd"><h3>Envelope spend · this month</h3></div>
+        <div className="hd"><h3>Envelope spend · {headerTitle}</h3></div>
         <div className="bd" style={{ color: 'var(--mute)', fontSize: 12 }}>Loading…</div>
       </div>
     );
@@ -340,9 +361,9 @@ export default function EnvelopePanel({ bucketFilter = 'all' }: { bucketFilter?:
     );
   }
 
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth();
+  const [py, pm] = period.split('-').map(Number);
+  const year = py;
+  const month = pm - 1;
 
   // Group spend entries by budget item
   const spendByItem = new Map<string, SpendEntry[]>();
@@ -358,11 +379,38 @@ export default function EnvelopePanel({ bucketFilter = 'all' }: { bucketFilter?:
       (bucketFilter === 'all' || e.bucket === bucketFilter),
   );
 
+  const navBtn = (disabled: boolean): React.CSSProperties => ({
+    background: 'none',
+    border: '1px solid var(--line)',
+    borderRadius: 6,
+    color: disabled ? 'var(--mute)' : 'var(--ink-2)',
+    cursor: disabled ? 'default' : 'pointer',
+    fontSize: 12,
+    lineHeight: '14px',
+    padding: '2px 8px',
+    opacity: disabled ? 0.4 : 1,
+  });
+
   return (
     <div className="card">
       <div className="hd">
-        <h3>Envelope spend · this month</h3>
-        <span className="sub">budget vs actual-to-date</span>
+        <h3>Envelope spend · {headerTitle}</h3>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <button
+            type="button"
+            onClick={() => setPeriod(p => shiftPeriod(p, -1))}
+            style={navBtn(false)}
+            title="Previous month"
+          >‹</button>
+          <button
+            type="button"
+            disabled={isCurrent}
+            onClick={() => setPeriod(p => shiftPeriod(p, 1))}
+            style={navBtn(isCurrent)}
+            title="Next month"
+          >›</button>
+          <span className="sub">{isCurrent ? 'budget vs actual-to-date' : 'budget vs actual'}</span>
+        </div>
       </div>
       <div className="bd">
         {envelopes.length === 0 ? (
@@ -380,6 +428,7 @@ export default function EnvelopePanel({ bucketFilter = 'all' }: { bucketFilter?:
                 envelope={env}
                 entries={spendByItem.get(env.id) ?? []}
                 monthlyBudget={monthlyBudget}
+                period={period}
               />
             );
           })
