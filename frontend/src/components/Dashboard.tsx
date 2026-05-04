@@ -23,7 +23,7 @@ const fmtMD = (d: Date) => d.toLocaleDateString('en-AU', { month: 'short', day: 
 type BucketFilter = 'all' | 'personal' | 'maple';
 
 // ——— CC Statement card ———
-function CCStatementCard({ entries }: { entries: CashFlowEntry[] }) {
+function CCStatementCard({ entries, ccConfig }: { entries: CashFlowEntry[]; ccConfig: { closeDay: number; dueDay: number } }) {
   const [open, setOpen] = useState(false);
 
   const ccEntry = entries.find(e => e.breakdown.some(b => b.isCC && b.type === 'expense'));
@@ -31,10 +31,24 @@ function CCStatementCard({ entries }: { entries: CashFlowEntry[] }) {
   const ccTotal = ccItems.reduce((t, b) => t + (b.actualAmount ?? b.overrideAmount ?? b.forecastAmount), 0);
   const ccDate = ccEntry ? new Date(ccEntry.date + 'T00:00:00') : null;
 
+  // The statement closes earlier than it's due. When the configured dueDay is
+  // before the closeDay, the statement closed in the previous month relative
+  // to the due date — so the close month is one before due. Otherwise both
+  // fall in the same month.
+  const stmtMonthLabel = ccDate
+    ? (() => {
+        const d = new Date(ccDate);
+        if (ccConfig.dueDay < ccConfig.closeDay) d.setMonth(d.getMonth() - 1);
+        return d.toLocaleDateString('en-AU', { month: 'long' });
+      })()
+    : null;
+
   return (
     <div className="stmt-card">
       <div className="chip" />
-      <div className="tag">CBA Mastercard · next statement</div>
+      <div className="tag">
+        CBA Mastercard · {stmtMonthLabel ? `${stmtMonthLabel} statement` : 'next statement'}
+      </div>
       <div className="amt mono">{ccTotal > 0 ? fmtAUD(ccTotal) : 'A$0'}</div>
       <div className="meta">
         {ccDate
@@ -431,6 +445,7 @@ export default function Dashboard({ dateRange, onDateRangeChange }: Props) {
   const entries = useMemo<CashFlowEntry[]>(() => data?.entries ?? [], [data]);
   const actualsEntries = useMemo<CashFlowEntry[]>(() => data?.actualsEntries ?? [], [data]);
   const adjustedEntries = useMemo<CashFlowEntry[]>(() => data?.adjustedEntries ?? [], [data]);
+  const ccConfig = useMemo(() => data?.ccConfig ?? { closeDay: 12, dueDay: 25 }, [data]);
   const overdueItems = useMemo<OverdueItem[]>(() => data?.overdueItems ?? [], [data]);
   const overdueTotals = useMemo<OverdueTotals>(
     () => data?.overdueTotals ?? {
@@ -542,7 +557,7 @@ export default function Dashboard({ dateRange, onDateRangeChange }: Props) {
 
           <div className="stack">
             <OnThisDateCard entries={entries} scrubIndex={scrubIndex} bucketFilter={bucketFilter} />
-            {bucketFilter === 'personal' && <CCStatementCard entries={entries} />}
+            {bucketFilter === 'personal' && <CCStatementCard entries={entries} ccConfig={ccConfig} />}
           </div>
         </section>
 

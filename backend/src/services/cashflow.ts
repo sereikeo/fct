@@ -642,8 +642,13 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
       // routing key ('Credit' triggers placeOnDay's CC branch) is separate
       // from the display label shown in the LineItem.
       for (const entry of entries) {
-        if (entry.date < walkStartStr || entry.date > to) continue;
+        if (entry.date > to) continue;
         const isCreditLane = entry.payment === 'credit';
+        // Cash entries dated before walkStart already hit the bank — skip them.
+        // Credit entries dated before walkStart are still outstanding on the
+        // card; placeOnDay will land them on the upcoming statement-due date,
+        // which it already gates against walkStart.
+        if (!isCreditLane && entry.date < walkStartStr) continue;
         const routeKey     = isCreditLane ? 'Credit' : 'Cash';
         placeOnDay(
           {
@@ -739,7 +744,10 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
     balance: e.balance + netP + netM,
   }));
 
-  return { entries, actualsEntries, adjustedEntries, overdueItems, overdueTotals };
+  return {
+    entries, actualsEntries, adjustedEntries, overdueItems, overdueTotals,
+    ccConfig: { closeDay, dueDay },
+  };
 }
 
 function makeLineItem(

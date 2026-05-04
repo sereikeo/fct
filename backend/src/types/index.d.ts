@@ -93,6 +93,7 @@ export interface CashFlowResult {
   adjustedEntries: CashFlowEntry[];
   overdueItems: OverdueItem[];
   overdueTotals: OverdueTotals;
+  ccConfig: { closeDay: number; dueDay: number };
 }
 
 export interface SpendEntry {
