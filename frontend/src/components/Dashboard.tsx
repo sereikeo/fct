@@ -27,7 +27,16 @@ function CCStatementCard({ entries, ccConfig }: { entries: CashFlowEntry[]; ccCo
   const [open, setOpen] = useState(false);
 
   const ccEntry = entries.find(e => e.breakdown.some(b => b.isCC && b.type === 'expense'));
-  const ccItems = ccEntry ? ccEntry.breakdown.filter(b => b.isCC && b.type === 'expense') : [];
+  // Tile shows only confirmed charges (real spend already on the card).
+  // Projected/expected items (e.g. an unconfirmed Amazon Prime renewal) still
+  // affect the chart but are deliberately excluded here — the tile reads as
+  // "what's pending on my card right now", not "what we forecast will land".
+  const ccItems = ccEntry
+    ? ccEntry.breakdown
+        .filter(b => b.isCC && b.type === 'expense' && b.isConfirmed)
+        .slice()
+        .sort((a, b) => b.date.localeCompare(a.date)) // newest at top
+    : [];
   const ccTotal = ccItems.reduce((t, b) => t + (b.actualAmount ?? b.overrideAmount ?? b.forecastAmount), 0);
   const ccDate = ccEntry ? new Date(ccEntry.date + 'T00:00:00') : null;
 
