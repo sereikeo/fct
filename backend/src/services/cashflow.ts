@@ -1,7 +1,7 @@
 import db from '../db';
 import type {
   BudgetItemType, Bucket, CashFlowEntry, LineItem,
-  OverdueItem, OverdueTotals, CashFlowResult,
+  OverdueItem, OverdueTotals, CashFlowResult, CCStatement,
 } from '../types';
 
 // ---------------------------------------------------------------------------
@@ -164,32 +164,91 @@ function countMissedCycles(
 }
 
 // ---------------------------------------------------------------------------
-// CC statement due date
+// CC statement cycle
 //
-// Statement period: from (closeDay+1 of prev month) to closeDay of current month.
-// If the item's day <= closeDay  → closes this month → due this month (or next if dueDay < closeDay).
-// If the item's day >  closeDay → closes next month → due accordingly.
+// Each statement is { period, periodStart, closeDate, dueDate }. Spend lands
+// on the first statement whose closeDate >= occurrence date; the bundled
+// total is debited on that statement's dueDate.
+//
+// Defaults: close on closeDay-of-month; due on dueDay-of-month (wrapped to
+// next month if dueDay < closeDay). Overrides from cc_statement_overrides
+// replace the default close/due for that period.
 // ---------------------------------------------------------------------------
 
-function ccDueDate(occDate: Date, closeDay: number, dueDay: number): Date {
-  const day = occDate.getDate();
-  let cm = occDate.getMonth();
-  let cy = occDate.getFullYear();
+interface CCOverrideRow {
+  period: string;
+  close_date: string;
+  due_date: string;
+}
 
-  if (day > closeDay) {
-    // Statement closes in the following month
-    cm++;
-    if (cm > 11) { cm = 0; cy++; }
-  }
+function defaultCloseDate(year: number, month: number, closeDay: number): Date {
+  return clampDay(year, month, closeDay);
+}
 
-  // Due date is in the close month unless dueDay < closeDay (due wraps to next month)
-  let dm = cm, dy = cy;
+function defaultDueDate(closeYear: number, closeMonth: number, closeDay: number, dueDay: number): Date {
+  // Due wraps into the next month when dueDay < closeDay (e.g. close 7th, due 4th of next month).
+  let dy = closeYear, dm = closeMonth;
   if (dueDay < closeDay) {
     dm++;
     if (dm > 11) { dm = 0; dy++; }
   }
-
   return clampDay(dy, dm, dueDay);
+}
+
+// Build a sorted statements list covering [walkStart - 2 months, toDate + 2 months].
+// The buffer keeps us safe against past credit spend bundling forward and
+// future occurrences bundling onto a statement just past the range.
+function buildStatements(
+  walkStart: Date,
+  toDate: Date,
+  closeDay: number,
+  dueDay: number,
+  overrides: CCOverrideRow[],
+): CCStatement[] {
+  const overrideMap = new Map(overrides.map(o => [o.period, o] as const));
+
+  const start = new Date(walkStart.getFullYear(), walkStart.getMonth() - 2, 1);
+  const end   = new Date(toDate.getFullYear(),   toDate.getMonth() + 2,   1);
+
+  const stmts: CCStatement[] = [];
+  for (let m = new Date(start); m <= end; m = new Date(m.getFullYear(), m.getMonth() + 1, 1)) {
+    const period = `${m.getFullYear()}-${String(m.getMonth() + 1).padStart(2, '0')}`;
+    const ov     = overrideMap.get(period);
+    const close  = ov ? parseDate(ov.close_date) : defaultCloseDate(m.getFullYear(), m.getMonth(), closeDay);
+    const due    = ov ? parseDate(ov.due_date)   : defaultDueDate(m.getFullYear(), m.getMonth(), closeDay, dueDay);
+
+    stmts.push({
+      period,
+      periodStart: '', // filled below
+      closeDate:   fmtDate(close),
+      dueDate:     fmtDate(due),
+      isOverride:  !!ov,
+    });
+  }
+
+  // periodStart = day after previous statement's close. The first statement
+  // has no predecessor in the buffer; default it to one day after a synthetic
+  // prior-month close (which lies before the buffer anyway).
+  for (let i = 0; i < stmts.length; i++) {
+    if (i === 0) {
+      const prior = new Date(start.getFullYear(), start.getMonth() - 1, 1);
+      const priorClose = defaultCloseDate(prior.getFullYear(), prior.getMonth(), closeDay);
+      stmts[i].periodStart = fmtDate(addDays(priorClose, 1));
+    } else {
+      stmts[i].periodStart = fmtDate(addDays(parseDate(stmts[i - 1].closeDate), 1));
+    }
+  }
+
+  return stmts;
+}
+
+// First statement whose closeDate >= occDateStr. Returns null if none —
+// caller drops the occurrence (it falls past the buffered statement range).
+function statementForOccurrence(occDateStr: string, statements: CCStatement[]): CCStatement | null {
+  for (const s of statements) {
+    if (s.closeDate >= occDateStr) return s;
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -269,10 +328,11 @@ function buildOccurrences(
 // Prepared statements (compiled once at module load, schema is already applied)
 // ---------------------------------------------------------------------------
 
-const stmtItems        = db.prepare('SELECT * FROM budget_items WHERE deleted_at IS NULL');
-const stmtOverrides    = db.prepare('SELECT budget_item_id, period, override_amount FROM envelope_overrides');
-const stmtRecons       = db.prepare('SELECT budget_item_id, date, actual_amount, delta FROM reconciliation');
-const stmtTransactions = db.prepare('SELECT * FROM transactions');
+const stmtItems         = db.prepare('SELECT * FROM budget_items WHERE deleted_at IS NULL');
+const stmtOverrides     = db.prepare('SELECT budget_item_id, period, override_amount FROM envelope_overrides');
+const stmtRecons        = db.prepare('SELECT budget_item_id, date, actual_amount, delta FROM reconciliation');
+const stmtTransactions  = db.prepare('SELECT * FROM transactions');
+const stmtCCOverrides   = db.prepare('SELECT period, close_date, due_date FROM cc_statement_overrides');
 const stmtSpendLog     = db.prepare(`
   SELECT sl.budget_item_id, sl.date, sl.amount, sl.payment, sl.note
   FROM   spend_log sl
@@ -347,6 +407,11 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
   const overrides    = stmtOverrides.all()    as OverrideRow[];
   const recons       = stmtRecons.all()       as ReconRow[];
   const transactions = stmtTransactions.all() as TxRow[];
+  const ccOverrides  = stmtCCOverrides.all()  as { period: string; close_date: string; due_date: string }[];
+
+  // Statement cycle list — drives CC bundling. One entry per (close month)
+  // across [walkStart - 2mo, toDate + 2mo]. Overrides replace defaults.
+  const ccStatements = buildStatements(walkStart, toDate, closeDay, dueDay, ccOverrides);
 
   interface SpendLogRow { budget_item_id: string; date: string; amount: number; payment: 'cash' | 'credit'; note: string | null; }
   const spendRows = stmtSpendLog.all() as SpendLogRow[];
@@ -487,7 +552,9 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
   ): void {
     const scheduled: Scheduled = { occ, ...flags, isEnvelopeRemainder };
     if (payment === 'Credit') {
-      const stmtDue = fmtDate(ccDueDate(parseDate(targetDateStr), closeDay, dueDay));
+      const stmt = statementForOccurrence(targetDateStr, ccStatements);
+      if (!stmt) return; // beyond statement buffer — drop
+      const stmtDue = stmt.dueDate;
       if (stmtDue >= walkStartStr && stmtDue <= to) {
         if (!ccByDueDate.has(stmtDue)) ccByDueDate.set(stmtDue, []);
         ccByDueDate.get(stmtDue)!.push(scheduled);
@@ -780,6 +847,7 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
   return {
     entries, actualsEntries, adjustedEntries, overdueItems, overdueTotals,
     ccConfig: { closeDay, dueDay },
+    ccStatements,
   };
 }
 

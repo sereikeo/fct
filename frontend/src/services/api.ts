@@ -60,6 +60,20 @@ export interface OverdueTotals {
   maple:    OverdueBucketTotal;
 }
 
+export interface CCStatement {
+  period: string;        // YYYY-MM of close month
+  periodStart: string;   // YYYY-MM-DD
+  closeDate: string;     // YYYY-MM-DD
+  dueDate: string;       // YYYY-MM-DD
+  isOverride: boolean;
+}
+
+export interface CCStatementOverride {
+  period: string;
+  closeDate: string;
+  dueDate: string;
+}
+
 export interface CashFlowResponse {
   entries: CashFlowEntry[];
   actualsEntries: CashFlowEntry[];
@@ -67,6 +81,7 @@ export interface CashFlowResponse {
   overdueItems: OverdueItem[];
   overdueTotals: OverdueTotals;
   ccConfig: { closeDay: number; dueDay: number };
+  ccStatements: CCStatement[];
 }
 
 export interface EnvelopeOverride {
@@ -128,6 +143,7 @@ export const QUERY_KEYS = {
   envelopes: ['envelopes'] as const,
   reconciliation: ['reconciliation'] as const,
   spend: (period: string) => ['spend', period] as const,
+  ccOverrides: ['cc-overrides'] as const,
   health: ['health'] as const,
 };
 
@@ -198,6 +214,19 @@ export async function postSpend(body: {
 
 export async function deleteSpend(id: string): Promise<void> {
   await client.delete(`/spend/${id}`);
+}
+
+export async function getCCOverrides(): Promise<{ overrides: CCStatementOverride[] }> {
+  const { data } = await client.get('/cc-overrides');
+  return data;
+}
+
+export async function putCCOverride(period: string, body: { closeDate: string; dueDate: string }): Promise<void> {
+  await client.put(`/cc-overrides/${period}`, body);
+}
+
+export async function deleteCCOverride(period: string): Promise<void> {
+  await client.delete(`/cc-overrides/${period}`);
 }
 
 export async function getHealth(): Promise<HealthResponse> {

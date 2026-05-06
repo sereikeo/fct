@@ -84,3 +84,15 @@ CREATE INDEX IF NOT EXISTS idx_spend_log_budget_item_id
 
 CREATE INDEX IF NOT EXISTS idx_spend_log_tx_id
   ON spend_log (tx_id);
+
+-- Per-statement CC cycle overrides. CBA's close/due dates drift each month
+-- based on weekends/public holidays — this lets the user nudge a single
+-- statement's dates without redeploying or changing env vars. Period is
+-- YYYY-MM of the close month (i.e. the month the statement closed in).
+CREATE TABLE IF NOT EXISTS cc_statement_overrides (
+  period          TEXT PRIMARY KEY,
+  close_date      TEXT NOT NULL,
+  due_date        TEXT NOT NULL,
+  created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);

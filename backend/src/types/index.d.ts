@@ -91,6 +91,25 @@ export interface OverdueTotals {
   maple:    OverdueBucketTotal;
 }
 
+// One CC statement cycle. periodStart is the day after the previous
+// statement's close (the first day spend can land on this statement);
+// closeDate is the last day spend can land on it; dueDate is when the
+// bundled total is debited. isOverride flags rows that came from
+// cc_statement_overrides rather than env defaults.
+export interface CCStatement {
+  period: string;        // YYYY-MM of close month
+  periodStart: string;   // YYYY-MM-DD
+  closeDate: string;     // YYYY-MM-DD
+  dueDate: string;       // YYYY-MM-DD
+  isOverride: boolean;
+}
+
+export interface CCStatementOverride {
+  period: string;
+  closeDate: string;
+  dueDate: string;
+}
+
 export interface CashFlowResult {
   entries: CashFlowEntry[];
   actualsEntries: CashFlowEntry[];
@@ -98,6 +117,7 @@ export interface CashFlowResult {
   overdueItems: OverdueItem[];
   overdueTotals: OverdueTotals;
   ccConfig: { closeDay: number; dueDay: number };
+  ccStatements: CCStatement[];
 }
 
 export interface SpendEntry {

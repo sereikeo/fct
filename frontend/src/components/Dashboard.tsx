@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { getCashflow, getEnvelopes, QUERY_KEYS, CashFlowEntry, LineItem, EnvelopeWithOverride, OverdueItem, OverdueTotals } from '../services/api';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
+import { getCashflow, getEnvelopes, putCCOverride, QUERY_KEYS, CashFlowEntry, CCStatement, LineItem, EnvelopeWithOverride, OverdueItem, OverdueTotals } from '../services/api';
 import CashFlowChart from './CashFlowChart';
 import SyncStatus from './SyncStatus';
 import EnvelopePanel from './EnvelopePanel';
@@ -23,8 +23,19 @@ const fmtMD = (d: Date) => d.toLocaleDateString('en-AU', { month: 'short', day: 
 type BucketFilter = 'all' | 'personal' | 'maple';
 
 // ——— CC Statement card ———
-function CCStatementCard({ entries, ccConfig }: { entries: CashFlowEntry[]; ccConfig: { closeDay: number; dueDay: number } }) {
+const fmtDDMM = (iso: string) => {
+  const [, m, d] = iso.split('-');
+  return `${d}/${m}`;
+};
+
+function CCStatementCard({ entries, ccStatements }: { entries: CashFlowEntry[]; ccStatements: CCStatement[] }) {
   const [open, setOpen] = useState(false);
+  const queryClient = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: (vars: { period: string; closeDate: string; dueDate: string }) =>
+      putCCOverride(vars.period, { closeDate: vars.closeDate, dueDate: vars.dueDate }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['cashflow'] }),
+  });
 
   const ccEntry = entries.find(e => e.breakdown.some(b => b.isCC && b.type === 'expense'));
   // Tile shows only confirmed charges (real spend already on the card).
@@ -40,32 +51,64 @@ function CCStatementCard({ entries, ccConfig }: { entries: CashFlowEntry[]; ccCo
   const ccTotal = ccItems.reduce((t, b) => t + (b.actualAmount ?? b.overrideAmount ?? b.forecastAmount), 0);
   const ccDate = ccEntry ? new Date(ccEntry.date + 'T00:00:00') : null;
 
-  // The statement closes earlier than it's due. When the configured dueDay is
-  // before the closeDay, the statement closed in the previous month relative
-  // to the due date — so the close month is one before due. Otherwise both
-  // fall in the same month.
-  const stmtMonthLabel = ccDate
-    ? (() => {
-        const d = new Date(ccDate);
-        if (ccConfig.dueDay < ccConfig.closeDay) d.setMonth(d.getMonth() - 1);
-        return d.toLocaleDateString('en-AU', { month: 'long' });
-      })()
+  // Match the statement to the CC entry by dueDate. Falls back to the first
+  // statement whose dueDate >= today when no upcoming CC items exist, so the
+  // user can still nudge the next cycle's dates before any spend lands.
+  const todayISO = new Date().toISOString().slice(0, 10);
+  const statement = ccEntry
+    ? ccStatements.find(s => s.dueDate === ccEntry.date)
+    : ccStatements.find(s => s.dueDate >= todayISO);
+
+  const stmtMonthLabel = statement
+    ? new Date(statement.closeDate + 'T00:00:00').toLocaleDateString('en-AU', { month: 'long' })
     : null;
+
+  function handleCloseChange(newClose: string) {
+    if (!statement) return;
+    mutation.mutate({ period: statement.period, closeDate: newClose, dueDate: statement.dueDate });
+  }
+  function handleDueChange(newDue: string) {
+    if (!statement) return;
+    mutation.mutate({ period: statement.period, closeDate: statement.closeDate, dueDate: newDue });
+  }
 
   return (
     <div className="stmt-card">
       <div className="chip" />
       <div className="tag">
         CBA Mastercard · {stmtMonthLabel ? `${stmtMonthLabel} statement` : 'next statement'}
+        {statement?.isOverride && <span style={{ marginLeft: 6, opacity: 0.7 }}>· edited</span>}
       </div>
       <div className="amt mono">{ccTotal > 0 ? fmtAUD(ccTotal) : 'A$0'}</div>
       <div className="meta">
-        {ccDate
-          ? <><span>due <b>{fmtMD(ccDate)}</b></span></>
-          : <span style={{ color: 'var(--mute)' }}>No upcoming CC items</span>
-        }
+        {statement ? (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            due <input
+              type="date"
+              value={statement.dueDate}
+              onChange={e => handleDueChange(e.target.value)}
+              className="stmt-date-input"
+              disabled={mutation.isPending}
+              aria-label="Statement due date"
+            />
+          </span>
+        ) : (
+          <span style={{ color: 'var(--mute)' }}>No upcoming CC items</span>
+        )}
       </div>
-      {ccDate && <div className="period">period · statement cycle</div>}
+      {statement && (
+        <div className="period" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          period · {fmtDDMM(statement.periodStart)} →{' '}
+          <input
+            type="date"
+            value={statement.closeDate}
+            onChange={e => handleCloseChange(e.target.value)}
+            className="stmt-date-input"
+            disabled={mutation.isPending}
+            aria-label="Statement close date"
+          />
+        </div>
+      )}
       {ccItems.length > 0 && (
         <button className="stmt-toggle" onClick={() => setOpen(v => !v)}>
           {open ? `▾ hide ${ccItems.length} items` : `▸ show ${ccItems.length} items`}
@@ -457,7 +500,7 @@ export default function Dashboard({ dateRange, onDateRangeChange }: Props) {
   const entries = useMemo<CashFlowEntry[]>(() => data?.entries ?? [], [data]);
   const actualsEntries = useMemo<CashFlowEntry[]>(() => data?.actualsEntries ?? [], [data]);
   const adjustedEntries = useMemo<CashFlowEntry[]>(() => data?.adjustedEntries ?? [], [data]);
-  const ccConfig = useMemo(() => data?.ccConfig ?? { closeDay: 12, dueDay: 25 }, [data]);
+  const ccStatements = useMemo<CCStatement[]>(() => data?.ccStatements ?? [], [data]);
   const overdueItems = useMemo<OverdueItem[]>(() => data?.overdueItems ?? [], [data]);
   const overdueTotals = useMemo<OverdueTotals>(
     () => data?.overdueTotals ?? {
@@ -569,7 +612,7 @@ export default function Dashboard({ dateRange, onDateRangeChange }: Props) {
 
           <div className="stack">
             <OnThisDateCard entries={entries} scrubIndex={scrubIndex} bucketFilter={bucketFilter} />
-            {bucketFilter === 'personal' && <CCStatementCard entries={entries} ccConfig={ccConfig} />}
+            {bucketFilter === 'personal' && <CCStatementCard entries={entries} ccStatements={ccStatements} />}
           </div>
         </section>
 

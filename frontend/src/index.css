@@ -170,6 +170,10 @@ button{font-family:inherit}
 .stmt-toggle:hover{text-decoration:underline}
 .stmt-actions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
 .stmt-actions .btn{padding:6px 12px;font-size:12px}
+.stmt-date-input{font:inherit;color:inherit;background:transparent;border:0;border-bottom:1px dashed currentColor;padding:0 2px;margin:0;cursor:pointer;font-family:'JetBrains Mono',monospace;font-size:inherit;line-height:1;width:7.5em}
+.stmt-date-input::-webkit-calendar-picker-indicator{cursor:pointer;opacity:0.55;filter:invert(0.2)}
+.stmt-date-input:hover{border-bottom-style:solid}
+.stmt-date-input:disabled{opacity:0.5;cursor:wait}
 
 /* Ledger */
 .ledger{width:100%;border-collapse:collapse;font-size:13px}
