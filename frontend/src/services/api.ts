@@ -11,6 +11,7 @@ export type Payment = 'Direct Debit' | 'Credit' | 'BPAY' | 'DD (Shared)';
 
 export interface LineItem {
   budgetItemId: string;
+  txId: string | null;
   name: string;
   category: string;
   type: BudgetItemType;
@@ -236,4 +237,11 @@ export async function getHealth(): Promise<HealthResponse> {
 
 export async function postSync(): Promise<void> {
   await client.post('/sync');
+}
+
+export async function patchTransaction(
+  id: string,
+  body: { confirmedDate: string },
+): Promise<void> {
+  await client.patch(`/transactions/${id}`, body);
 }

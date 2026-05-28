@@ -9,6 +9,7 @@ import { syncRouter }          from './routes/sync';
 import { driftRouter }         from './routes/drift';
 import { spendRouter }         from './routes/spend';
 import { ccOverridesRouter }   from './routes/ccOverrides';
+import { transactionsRouter }  from './routes/transactions';
 import { runSync, startScheduledSync } from './services/notion';
 
 const app  = express();
@@ -33,6 +34,7 @@ app.use('/api/sync',           syncRouter);
 app.use('/api/drift',          driftRouter);
 app.use('/api/spend',          spendRouter);
 app.use('/api/cc-overrides',   ccOverridesRouter);
+app.use('/api/transactions',   transactionsRouter);
 
 // ---------------------------------------------------------------------------
 // 404

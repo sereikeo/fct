@@ -1,6 +1,6 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
-import { getCashflow, getEnvelopes, putCCOverride, QUERY_KEYS, CashFlowEntry, CCStatement, LineItem, EnvelopeWithOverride, OverdueItem, OverdueTotals } from '../services/api';
+import { getCashflow, getEnvelopes, patchTransaction, putCCOverride, QUERY_KEYS, CashFlowEntry, CCStatement, LineItem, EnvelopeWithOverride, OverdueItem, OverdueTotals } from '../services/api';
 import CashFlowChart from './CashFlowChart';
 import SyncStatus from './SyncStatus';
 import EnvelopePanel from './EnvelopePanel';
@@ -246,6 +246,217 @@ function OnThisDateCard({ entries, scrubIndex, bucketFilter }: { entries: CashFl
   );
 }
 
+// ——— Inline paid-date editor ———
+// Click the date on a confirmed ledger row → swap to a native date input.
+// Enter/blur commits via PATCH /api/transactions/:id; Escape cancels.
+function PaidDateCell({ txId, date }: { txId: string; date: string }) {
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(date);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { setValue(date); }, [date]);
+  useEffect(() => { if (editing) inputRef.current?.focus(); }, [editing]);
+
+  const mutation = useMutation({
+    mutationFn: (newDate: string) => patchTransaction(txId, { confirmedDate: newDate }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['cashflow'] }),
+  });
+
+  const commit = (next: string) => {
+    setEditing(false);
+    if (next && next !== date) mutation.mutate(next);
+    else setValue(date);
+  };
+
+  if (editing) {
+    return (
+      <input
+        ref={inputRef}
+        type="date"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={() => commit(value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter')  { e.preventDefault(); commit(value); }
+          if (e.key === 'Escape') { setValue(date); setEditing(false); }
+        }}
+        className="stmt-date-input"
+        aria-label="Paid date"
+      />
+    );
+  }
+
+  return (
+    <div
+      className="bill-name paid-date-edit"
+      role="button"
+      tabIndex={0}
+      title="Click to change paid date"
+      onClick={() => setEditing(true)}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setEditing(true); } }}
+      style={{ cursor: 'pointer', textDecorationLine: 'underline', textDecorationStyle: 'dotted', textDecorationColor: 'var(--line)' }}
+    >
+      {new Date(date + 'T00:00:00').toLocaleDateString('en-AU', { month: 'short', day: '2-digit' })}
+    </div>
+  );
+}
+
+// ——— Bulk fix-paid-dates modal ———
+// Lists every confirmed LineItem in the loaded cashflow that has the chosen
+// "show confirmed on" date. Per-row date inputs PATCH on blur; rows whose
+// date no longer matches the filter grey out and drop to the bottom so the
+// user can still see (and re-edit) what they just moved.
+function FixDatesModal({
+  open,
+  onClose,
+  entries,
+}: {
+  open: boolean;
+  onClose: () => void;
+  entries: CashFlowEntry[];
+}) {
+  const qc = useQueryClient();
+  const today = useMemo(() => toISO(new Date()), []);
+  const [filterDate, setFilterDate] = useState(today);
+  // Local per-row date state. Keyed by txId. Reset whenever the modal opens
+  // or the filter date changes so the list reflects current data.
+  const [localDates, setLocalDates] = useState<Record<string, string>>({});
+
+  // Build the candidate list once per open from the loaded cashflow. Captured
+  // in a ref so a row that's been moved off the filter still shows up here.
+  const candidatesRef = useRef<{ txId: string; name: string; bucket: string; amount: number; type: string; original: string }[]>([]);
+
+  useEffect(() => {
+    if (!open) return;
+    const seen = new Set<string>();
+    const list: { txId: string; name: string; bucket: string; amount: number; type: string; original: string }[] = [];
+    for (const entry of entries) {
+      for (const li of entry.breakdown) {
+        if (!li.isConfirmed || !li.txId) continue;
+        if (li.isCC) continue; // CC bundle items aren't keyed to a single tx row
+        if (seen.has(li.txId)) continue;
+        if (li.date !== filterDate) continue;
+        seen.add(li.txId);
+        list.push({
+          txId:     li.txId,
+          name:     li.name,
+          bucket:   li.bucket,
+          amount:   li.overrideAmount ?? li.forecastAmount,
+          type:     li.type,
+          original: li.date,
+        });
+      }
+    }
+    candidatesRef.current = list;
+    setLocalDates(Object.fromEntries(list.map(c => [c.txId, c.original])));
+  }, [open, filterDate, entries]);
+
+  const mutation = useMutation({
+    mutationFn: (vars: { id: string; date: string }) =>
+      patchTransaction(vars.id, { confirmedDate: vars.date }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['cashflow'] }),
+  });
+
+  if (!open) return null;
+
+  const candidates = candidatesRef.current;
+  // Rows still matching the filter render first (active), edited-off rows
+  // drop to the bottom (moved) so order makes the progress visible.
+  const active = candidates.filter(c => (localDates[c.txId] ?? c.original) === filterDate);
+  const moved  = candidates.filter(c => (localDates[c.txId] ?? c.original) !== filterDate);
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 50,
+        background: 'rgba(19,18,17,0.45)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: 20,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="card"
+        style={{
+          maxWidth: 640, width: '100%', maxHeight: '85vh',
+          display: 'flex', flexDirection: 'column', overflow: 'hidden',
+        }}
+      >
+        <div className="hd" style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <h3 style={{ margin: 0 }}>Fix payment dates</h3>
+          <button className="btn ghost" style={{ marginLeft: 'auto' }} onClick={onClose}>Done</button>
+        </div>
+        <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--line-2)', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span style={{ color: 'var(--mute)', fontSize: 12 }}>Show confirmed on</span>
+          <input
+            type="date"
+            value={filterDate}
+            onChange={(e) => setFilterDate(e.target.value)}
+            className="stmt-date-input"
+          />
+          <span style={{ color: 'var(--mute)', fontSize: 12, marginLeft: 'auto' }}>
+            {active.length} matching · {moved.length} moved
+          </span>
+        </div>
+        <div style={{ maxHeight: 480, overflow: 'auto', padding: '8px 20px 16px' }}>
+          {candidates.length === 0 && (
+            <div style={{ color: 'var(--mute)', padding: '32px 0', textAlign: 'center', fontSize: 13 }}>
+              No confirmed transactions found on this date.
+            </div>
+          )}
+          {[...active, ...moved].map(c => {
+            const current = localDates[c.txId] ?? c.original;
+            const isMoved = current !== filterDate;
+            const isIncome = c.type === 'income';
+            return (
+              <div
+                key={c.txId}
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr auto auto',
+                  gap: 12,
+                  alignItems: 'center',
+                  padding: '10px 0',
+                  borderBottom: '1px solid var(--line-2)',
+                  opacity: isMoved ? 0.55 : 1,
+                }}
+              >
+                <div>
+                  <div className="bill-name">{c.name}</div>
+                  <div className="bill-sub">
+                    <span className={`tag ${c.bucket}`} style={{ marginRight: 6 }}>
+                      <span className="sw" style={{ background: c.bucket === 'maple' ? 'var(--maple)' : 'var(--personal)' }} />
+                      {c.bucket === 'maple' ? 'Maple' : 'Personal'}
+                    </span>
+                  </div>
+                </div>
+                <div className="num mono" style={{ color: isIncome ? 'var(--green)' : 'var(--ink)', fontWeight: 600 }}>
+                  {isIncome ? '+' : '−'}A${c.amount.toFixed(2)}
+                </div>
+                <input
+                  type="date"
+                  value={current}
+                  onChange={(e) => setLocalDates(d => ({ ...d, [c.txId]: e.target.value }))}
+                  onBlur={(e) => {
+                    const next = e.target.value;
+                    if (next && next !== c.original) {
+                      mutation.mutate({ id: c.txId, date: next });
+                    }
+                  }}
+                  className="stmt-date-input"
+                  aria-label={`Paid date for ${c.name}`}
+                />
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ——— Upcoming ledger table ———
 function LedgerCard({
   entries,
@@ -283,15 +494,26 @@ function LedgerCard({
   const showMaple    = mapleHas    && bucketFilter !== 'personal';
   const showSummary  = overdueRows.length > 0 && (showPersonal || showMaple);
 
+  const [fixDatesOpen, setFixDatesOpen] = useState(false);
+
   return (
     <div className="card flush">
-      <div className="hd" style={{ padding: '16px 20px' }}>
-        <h3>Upcoming · next 90 days</h3>
+      <div className="hd" style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
+        <h3 style={{ margin: 0 }}>Upcoming · next 90 days</h3>
         <span className="sub">
           {overdueRows.length > 0 ? `${overdueRows.length} overdue · ` : ''}
           {rows.length} rows · expanded from recurrence
         </span>
+        <button
+          className="btn ghost"
+          style={{ marginLeft: 'auto' }}
+          onClick={() => setFixDatesOpen(true)}
+          title="Bulk-edit confirmed transactions stamped on the same date"
+        >
+          Fix payment dates
+        </button>
       </div>
+      <FixDatesModal open={fixDatesOpen} onClose={() => setFixDatesOpen(false)} entries={entries} />
       {showSummary && (
         <div className="overdue-summary">
           <span className="lbl">Overdue</span>
@@ -389,6 +611,7 @@ function LedgerCard({
               const isIncome = item.type === 'income';
               const isStmt = item.isCC;
               const amt = item.overrideAmount ?? item.forecastAmount;
+              const editable = item.isConfirmed && !!item.txId && !isStmt;
               return (
                 <tr key={i} className={isStmt ? 'stmt-row-head' : ''}>
                   <td>
@@ -397,9 +620,13 @@ function LedgerCard({
                         {isStmt ? '◆' : isIncome ? '▲' : '▼'}
                       </div>
                       <div>
-                        <div className="bill-name">
-                          {new Date(entry.date + 'T00:00:00').toLocaleDateString('en-AU', { month: 'short', day: '2-digit' })}
-                        </div>
+                        {editable ? (
+                          <PaidDateCell txId={item.txId!} date={item.date} />
+                        ) : (
+                          <div className="bill-name">
+                            {new Date(entry.date + 'T00:00:00').toLocaleDateString('en-AU', { month: 'short', day: '2-digit' })}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </td>

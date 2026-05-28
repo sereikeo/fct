@@ -39,6 +39,9 @@ export interface ReconciliationRecord {
 
 export interface LineItem {
   budgetItemId: string;
+  // Ledger transaction row id when this line corresponds to a confirmed/pending/projected
+  // transactions row; null for expanded future occurrences and envelope remainders.
+  txId: string | null;
   name: string;
   category: string;
   type: BudgetItemType;

@@ -258,6 +258,7 @@ function statementForOccurrence(occDateStr: string, statements: CCStatement[]): 
 interface Occurrence {
   date: string;
   budgetItemId: string;
+  txId: string | null;
   name: string;
   category: string | null;
   type: BudgetItemType;
@@ -310,6 +311,7 @@ function buildOccurrences(
     return {
       date:           dateStr,
       budgetItemId:   item.id,
+      txId:           null,
       name:           item.name,
       category:       item.category,
       type:           item.type,
@@ -530,6 +532,7 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
     return {
       date:           dateStr,
       budgetItemId:   item?.id ?? tx?.notion_page_id ?? '',
+      txId:           tx?.id ?? null,
       name:           tx?.name ?? item?.name ?? '',
       category:       item?.category ?? null,
       type:           (tx?.type ?? item?.type ?? 'expense') as BudgetItemType,
@@ -725,7 +728,7 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
         const displayName = entry.note?.trim() ? entry.note.trim() : item.name;
         placeOnDay(
           {
-            date: entry.date, budgetItemId: item.id, name: displayName,
+            date: entry.date, budgetItemId: item.id, txId: null, name: displayName,
             category: item.category, type: item.type, bucket: item.bucket,
             payment: routeKey, forecastAmount: 0,
             overrideAmount: null, actualAmount: entry.amount,
@@ -746,7 +749,7 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
         if (remainingDate >= walkStartStr && remainingDate <= to) {
           placeOnDay(
             {
-              date: remainingDate, budgetItemId: item.id, name: item.name,
+              date: remainingDate, budgetItemId: item.id, txId: null, name: item.name,
               category: item.category, type: item.type, bucket: item.bucket,
               payment: item.payment, forecastAmount: remaining,
               overrideAmount: null, actualAmount: null,
@@ -777,7 +780,7 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
     const displayName = s.note?.trim() ? s.note.trim() : item.name;
     placeOnDay(
       {
-        date: s.date, budgetItemId: item.id, name: displayName,
+        date: s.date, budgetItemId: item.id, txId: null, name: displayName,
         category: item.category, type: item.type, bucket: item.bucket,
         payment: 'Credit', forecastAmount: 0,
         overrideAmount: null, actualAmount: s.amount,
@@ -860,6 +863,7 @@ function makeLineItem(
 ): LineItem {
   return {
     budgetItemId:   occ.budgetItemId,
+    txId:           occ.txId,
     name:           occ.name,
     category:       occ.category ?? '',
     type:           occ.type,
