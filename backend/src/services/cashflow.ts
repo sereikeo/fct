@@ -163,6 +163,32 @@ function countMissedCycles(
   }
 }
 
+// Approximate cycle count between two dates for a given recurrence — used to
+// decide how many cycles a single confirmed tx represents. Calendar-aligned
+// cycles drift a day or two off pure baseDays (e.g. salary on every-other-
+// Wednesday isn't exactly 14*N days), so we round rather than truncate. Min
+// 1 because if expected ≤ today we're always counting at least the current
+// cycle. baseDays for monthly/annual are mean lengths.
+function cyclesInGap(
+  startStr: string,
+  endStr: string,
+  frequency: ItemRow['frequency'],
+  recurInterval: number,
+): number {
+  if (!frequency || frequency === 'once') return 1;
+  const step = Math.max(1, recurInterval);
+  const baseDays =
+    frequency === 'weekly'      ?   7 * step :
+    frequency === 'fortnightly' ?  14 * step :
+    frequency === 'monthly'     ? 30.44 * step :
+    frequency === 'annual'      ? 365.25 * step :
+    null;
+  if (!baseDays) return 1;
+  const dayMs = 86_400_000;
+  const gapDays = Math.max(0, (parseDate(endStr).getTime() - parseDate(startStr).getTime()) / dayMs);
+  return Math.max(1, Math.round(gapDays / baseDays));
+}
+
 // ---------------------------------------------------------------------------
 // CC statement cycle
 //
@@ -569,9 +595,40 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
     }
   }
 
+  // Successor lookup — for each tx, the next tx (by expected_date) sharing
+  // the same notion_page_id. Used by the confirmed-tx loop below to figure
+  // out how many cycles a confirmed payment actually represents.
+  const successorExpectedByTxId = new Map<string, string>();
+  {
+    const txsByPage = new Map<string, TxRow[]>();
+    for (const tx of transactions) {
+      if (!tx.expected_date) continue;
+      const item = itemByPage.get(tx.notion_page_id);
+      if (!item || item.is_variable) continue;
+      if (!txsByPage.has(tx.notion_page_id)) txsByPage.set(tx.notion_page_id, []);
+      txsByPage.get(tx.notion_page_id)!.push(tx);
+    }
+    for (const list of txsByPage.values()) {
+      list.sort((a, b) => (a.expected_date ?? '').localeCompare(b.expected_date ?? ''));
+      for (let i = 0; i < list.length - 1; i++) {
+        const next = list[i + 1];
+        if (next.expected_date) successorExpectedByTxId.set(list[i].id, next.expected_date);
+      }
+    }
+  }
+
   // 1. Confirmed transactions — move the balance on their cash-effect date.
-  // For formerly-overdue items, deduct ALL missed cycles (not just one): the
-  // ledger tracks one tx row but the user paid the full overdue liability.
+  //
+  // Cycle multiplier: a single confirmed tx can represent N cycles if the
+  // user paid a backlog (e.g. rates overdue 4 cycles, paid in one Notion
+  // update — Notion advances the due_date by 4 intervals, sync confirms the
+  // existing row, tx.amount still holds the one-cycle figure). The signal
+  // for "this tx represents N cycles" is the gap to the *successor* tx for
+  // the same notion_page_id: if next.expected ≈ this.expected + 1 interval
+  // that's a normal on-time payment (1 cycle); if it's ≈ N intervals later,
+  // the user caught up N cycles. The previous logic counted cycles between
+  // expected_date and today, which wrongly doubled normal on-time payments
+  // whenever a more recent confirmed cycle also fit in the window.
   for (const tx of confirmedTxs) {
     if (!tx.confirmed_date) continue;
     const item = itemByPage.get(tx.notion_page_id);
@@ -581,7 +638,11 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
     if (expDate && expDate <= todayStr) {
       const freq     = (tx.frequency ?? item?.frequency ?? 'once') as ItemRow['frequency'];
       const interval = Math.max(1, tx.recur_interval ?? item?.recur_interval ?? 1);
-      const missed   = countMissedCycles(freq, interval, parseDate(expDate), todayDate);
+      // Successor-bounded: gap to next tx for this item, falling back to
+      // today when this is the latest tx (the original backlog case where
+      // no successor exists yet).
+      const upperStr = successorExpectedByTxId.get(tx.id) ?? todayStr;
+      const missed   = cyclesInGap(expDate, upperStr, freq, interval);
       if (missed > 1) occ = { ...occ, forecastAmount: tx.amount * missed };
     }
 
