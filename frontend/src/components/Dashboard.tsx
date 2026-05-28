@@ -670,9 +670,18 @@ function LedgerCard({
 type AccountFilter = 'all' | 'cash' | 'cc';
 
 function Last30dCard({ bucketFilter }: { bucketFilter: BucketFilter }) {
-  const { from, to } = useMemo(() => {
+  // Query range extends 45 days past today to capture CC items: the cash
+  // engine bundles confirmed Credit-payment items onto their statement due
+  // date (future), with item.date holding the real spend date. Without the
+  // forward buffer the CC items wouldn't be in the API response at all.
+  const { from, to, windowStart, windowEnd } = useMemo(() => {
     const today = new Date();
-    return { from: toISO(addDays(today, -30)), to: toISO(today) };
+    return {
+      from:        toISO(addDays(today, -30)),
+      to:          toISO(addDays(today,  45)),
+      windowStart: toISO(addDays(today, -30)),
+      windowEnd:   toISO(today),
+    };
   }, []);
 
   const [accountFilter, setAccountFilter] = useState<AccountFilter>('all');
@@ -686,15 +695,26 @@ function Last30dCard({ bucketFilter }: { bucketFilter: BucketFilter }) {
 
   const rows = useMemo(() => {
     const out: { entry: CashFlowEntry; item: LineItem }[] = [];
+    const seen = new Set<string>();
     for (const entry of entries) {
       for (const item of entry.breakdown) {
         if (!item.isConfirmed) continue; // past view = what already settled
+        // Filter by the row's real date, not the parent entry's date.
+        // For CC items the parent entry sits on the future stmt due, but
+        // item.date is the original spend date which is what we want here.
+        if (item.date < windowStart || item.date > windowEnd) continue;
         if (bucketFilter !== 'all' && item.bucket !== bucketFilter) continue;
         // Account routing: anything paid via 'Credit' hits the card; everything
         // else (Direct Debit, BPAY, DD Shared, envelope cash lane) hits the bank.
         const isCredit = item.payment === 'Credit';
         if (accountFilter === 'cash' && isCredit) continue;
         if (accountFilter === 'cc'   && !isCredit) continue;
+        // Dedupe: an item could land in multiple parent entries (envelope
+        // remainders, CC bundle echoes). Key on txId when present, else
+        // budgetItemId + item.date as a stable fallback.
+        const dedupeKey = item.txId ?? `${item.budgetItemId}:${item.date}:${item.payment}`;
+        if (seen.has(dedupeKey)) continue;
+        seen.add(dedupeKey);
         out.push({ entry, item });
       }
     }
@@ -702,7 +722,7 @@ function Last30dCard({ bucketFilter }: { bucketFilter: BucketFilter }) {
     // matches how the Upcoming view picks the visible date.
     out.sort((a, b) => b.item.date.localeCompare(a.item.date));
     return out;
-  }, [entries, bucketFilter, accountFilter]);
+  }, [entries, bucketFilter, accountFilter, windowStart, windowEnd]);
 
   return (
     <div className="card flush">
