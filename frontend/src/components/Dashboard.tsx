@@ -664,14 +664,19 @@ function LedgerCard({
 }
 
 // ——— Last 30 days card ———
-// Mirror of LedgerCard but backward-looking: own cashflow query over the
-// previous 30 days, confirmed line items only, newest first. CC bundle
-// statements that have settled are included as a single confirmed expense.
-function Last30dCard({ bucketFilter }: { bucketFilter: BucketFilter }) {
+// Backward-looking ledger. Independent of the top bucket filter — this is the
+// "what actually happened" view, so it shows everything settled in the window:
+// envelope spend (cash + credit lanes), Direct Debits, BPAY, CC purchases.
+// Local segmented control filters by account: All / Cash / CC.
+type AccountFilter = 'all' | 'cash' | 'cc';
+
+function Last30dCard() {
   const { from, to } = useMemo(() => {
     const today = new Date();
     return { from: toISO(addDays(today, -30)), to: toISO(today) };
   }, []);
+
+  const [accountFilter, setAccountFilter] = useState<AccountFilter>('all');
 
   const { data, isLoading } = useQuery({
     queryKey: QUERY_KEYS.cashflow(from, to),
@@ -685,8 +690,11 @@ function Last30dCard({ bucketFilter }: { bucketFilter: BucketFilter }) {
     for (const entry of entries) {
       for (const item of entry.breakdown) {
         if (!item.isConfirmed) continue; // past view = what already settled
-        if (bucketFilter !== 'all' && item.bucket !== bucketFilter) continue;
-        if (item.isCC && bucketFilter !== 'personal') continue;
+        // Account routing: anything paid via 'Credit' hits the card; everything
+        // else (Direct Debit, BPAY, DD Shared, envelope cash lane) hits the bank.
+        const isCredit = item.payment === 'Credit';
+        if (accountFilter === 'cash' && isCredit) continue;
+        if (accountFilter === 'cc'   && !isCredit) continue;
         out.push({ entry, item });
       }
     }
@@ -694,13 +702,24 @@ function Last30dCard({ bucketFilter }: { bucketFilter: BucketFilter }) {
     // matches how the Upcoming view picks the visible date.
     out.sort((a, b) => b.item.date.localeCompare(a.item.date));
     return out;
-  }, [entries, bucketFilter]);
+  }, [entries, accountFilter]);
 
   return (
     <div className="card flush">
-      <div className="hd" style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
+      <div className="hd" style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <h3 style={{ margin: 0 }}>Last 30 days</h3>
         <span className="sub">{rows.length} confirmed</span>
+        <div className="seg" role="group" aria-label="Account filter" style={{ marginLeft: 'auto' }}>
+          {(['all', 'cash', 'cc'] as AccountFilter[]).map(a => (
+            <button
+              key={a}
+              aria-pressed={accountFilter === a ? 'true' : 'false'}
+              onClick={() => setAccountFilter(a)}
+            >
+              {a === 'all' ? 'All' : a === 'cash' ? 'Cash' : 'CC'}
+            </button>
+          ))}
+        </div>
       </div>
       <div style={{ overflow: 'auto', maxHeight: 560 }}>
         {isLoading ? (
@@ -975,7 +994,7 @@ export default function Dashboard({ dateRange, onDateRangeChange }: Props) {
             overdueTotals={overdueTotals}
             bucketFilter={bucketFilter}
           />
-          <Last30dCard bucketFilter={bucketFilter} />
+          <Last30dCard />
         </section>
 
         <div style={{ height: 22 }} />
