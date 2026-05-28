@@ -664,13 +664,12 @@ function LedgerCard({
 }
 
 // ——— Last 30 days card ———
-// Backward-looking ledger. Independent of the top bucket filter — this is the
-// "what actually happened" view, so it shows everything settled in the window:
-// envelope spend (cash + credit lanes), Direct Debits, BPAY, CC purchases.
-// Local segmented control filters by account: All / Cash / CC.
+// Backward-looking ledger. Respects the top bucket filter (Personal / Maple
+// / All) like the Upcoming view does. Local segmented control adds an
+// account-type dimension: All / Cash / CC, routed off the payment field.
 type AccountFilter = 'all' | 'cash' | 'cc';
 
-function Last30dCard() {
+function Last30dCard({ bucketFilter }: { bucketFilter: BucketFilter }) {
   const { from, to } = useMemo(() => {
     const today = new Date();
     return { from: toISO(addDays(today, -30)), to: toISO(today) };
@@ -690,6 +689,7 @@ function Last30dCard() {
     for (const entry of entries) {
       for (const item of entry.breakdown) {
         if (!item.isConfirmed) continue; // past view = what already settled
+        if (bucketFilter !== 'all' && item.bucket !== bucketFilter) continue;
         // Account routing: anything paid via 'Credit' hits the card; everything
         // else (Direct Debit, BPAY, DD Shared, envelope cash lane) hits the bank.
         const isCredit = item.payment === 'Credit';
@@ -702,7 +702,7 @@ function Last30dCard() {
     // matches how the Upcoming view picks the visible date.
     out.sort((a, b) => b.item.date.localeCompare(a.item.date));
     return out;
-  }, [entries, accountFilter]);
+  }, [entries, bucketFilter, accountFilter]);
 
   return (
     <div className="card flush">
@@ -994,7 +994,7 @@ export default function Dashboard({ dateRange, onDateRangeChange }: Props) {
             overdueTotals={overdueTotals}
             bucketFilter={bucketFilter}
           />
-          <Last30dCard />
+          <Last30dCard bucketFilter={bucketFilter} />
         </section>
 
         <div style={{ height: 22 }} />
