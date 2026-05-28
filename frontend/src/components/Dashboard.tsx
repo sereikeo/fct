@@ -334,7 +334,6 @@ function FixDatesModal({
     for (const entry of entries) {
       for (const li of entry.breakdown) {
         if (!li.isConfirmed || !li.txId) continue;
-        if (li.isCC) continue; // CC bundle items aren't keyed to a single tx row
         if (seen.has(li.txId)) continue;
         if (li.date !== filterDate) continue;
         seen.add(li.txId);
@@ -611,7 +610,14 @@ function LedgerCard({
               const isIncome = item.type === 'income';
               const isStmt = item.isCC;
               const amt = item.overrideAmount ?? item.forecastAmount;
-              const editable = item.isConfirmed && !!item.txId && !isStmt;
+              // CC line items are individual transactions with their own txId
+              // (the bundle styling is just visual — there's no separate bundle
+              // row). Edit gating is purely confirmed + has txId.
+              const editable = item.isConfirmed && !!item.txId;
+              // Display the row's real date (item.date). For non-CC items this
+              // equals entry.date anyway; for CC items it's the spend/confirmed
+              // date rather than the statement-due date the row is bundled onto.
+              const displayDate = item.date || entry.date;
               return (
                 <tr key={i} className={isStmt ? 'stmt-row-head' : ''}>
                   <td>
@@ -621,10 +627,10 @@ function LedgerCard({
                       </div>
                       <div>
                         {editable ? (
-                          <PaidDateCell txId={item.txId!} date={item.date} />
+                          <PaidDateCell txId={item.txId!} date={displayDate} />
                         ) : (
                           <div className="bill-name">
-                            {new Date(entry.date + 'T00:00:00').toLocaleDateString('en-AU', { month: 'short', day: '2-digit' })}
+                            {new Date(displayDate + 'T00:00:00').toLocaleDateString('en-AU', { month: 'short', day: '2-digit' })}
                           </div>
                         )}
                       </div>
