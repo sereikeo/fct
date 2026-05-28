@@ -663,6 +663,120 @@ function LedgerCard({
   );
 }
 
+// ——— Last 30 days card ———
+// Mirror of LedgerCard but backward-looking: own cashflow query over the
+// previous 30 days, confirmed line items only, newest first. CC bundle
+// statements that have settled are included as a single confirmed expense.
+function Last30dCard({ bucketFilter }: { bucketFilter: BucketFilter }) {
+  const { from, to } = useMemo(() => {
+    const today = new Date();
+    return { from: toISO(addDays(today, -30)), to: toISO(today) };
+  }, []);
+
+  const { data, isLoading } = useQuery({
+    queryKey: QUERY_KEYS.cashflow(from, to),
+    queryFn: () => getCashflow(from, to),
+  });
+
+  const entries = useMemo<CashFlowEntry[]>(() => data?.entries ?? [], [data]);
+
+  const rows = useMemo(() => {
+    const out: { entry: CashFlowEntry; item: LineItem }[] = [];
+    for (const entry of entries) {
+      for (const item of entry.breakdown) {
+        if (!item.isConfirmed) continue; // past view = what already settled
+        if (bucketFilter !== 'all' && item.bucket !== bucketFilter) continue;
+        if (item.isCC && bucketFilter !== 'personal') continue;
+        out.push({ entry, item });
+      }
+    }
+    // Newest first by the row's real date (item.date), not the parent entry —
+    // matches how the Upcoming view picks the visible date.
+    out.sort((a, b) => b.item.date.localeCompare(a.item.date));
+    return out;
+  }, [entries, bucketFilter]);
+
+  return (
+    <div className="card flush">
+      <div className="hd" style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
+        <h3 style={{ margin: 0 }}>Last 30 days</h3>
+        <span className="sub">{rows.length} confirmed</span>
+      </div>
+      <div style={{ overflow: 'auto', maxHeight: 560 }}>
+        {isLoading ? (
+          <div style={{ padding: 24, color: 'var(--mute)', fontSize: 13, textAlign: 'center' }}>
+            Loading…
+          </div>
+        ) : rows.length === 0 ? (
+          <div style={{ padding: 24, color: 'var(--mute)', fontSize: 13, textAlign: 'center' }}>
+            Nothing confirmed in the last 30 days.
+          </div>
+        ) : (
+          <table className="ledger">
+            <thead>
+              <tr>
+                <th>Date</th><th>Bill</th><th>Budget</th><th>Payment</th>
+                <th className="num">Amount</th><th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(({ item }, i) => {
+                const isIncome = item.type === 'income';
+                const isStmt = item.isCC;
+                const amt = item.actualAmount ?? item.overrideAmount ?? item.forecastAmount;
+                const editable = item.isConfirmed && !!item.txId && !isStmt;
+                return (
+                  <tr key={i} className={isStmt ? 'stmt-row-head' : ''}>
+                    <td>
+                      <div className="ic-cell">
+                        <div className={`icon ${isIncome ? 'in' : isStmt ? 'stmt' : 'out'}`}>
+                          {isStmt ? '◆' : isIncome ? '▲' : '▼'}
+                        </div>
+                        <div>
+                          {editable ? (
+                            <PaidDateCell txId={item.txId!} date={item.date} />
+                          ) : (
+                            <div className="bill-name">
+                              {new Date(item.date + 'T00:00:00').toLocaleDateString('en-AU', { month: 'short', day: '2-digit' })}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+                    <td>
+                      <div className="bill-name">{item.name}</div>
+                      {item.category && <div className="bill-sub">{item.category}</div>}
+                    </td>
+                    <td>
+                      {isStmt ? (
+                        <span className="tag cc">Credit</span>
+                      ) : (
+                        <span className={`tag ${item.bucket}`}>
+                          <span className="sw" style={{ background: item.bucket === 'maple' ? 'var(--maple)' : 'var(--personal)' }} />
+                          {item.bucket === 'maple' ? 'Maple' : 'Personal'}
+                        </span>
+                      )}
+                    </td>
+                    <td style={{ color: 'var(--mute)' }}>{item.payment}</td>
+                    <td className="num" style={{ color: isIncome ? 'var(--green)' : isStmt ? 'var(--cc)' : 'var(--ink)', fontWeight: 600 }}>
+                      {isIncome ? '+' : '−'}A${amt.toFixed(2)}
+                    </td>
+                    <td>
+                      <span className={`reco-pill${item.isReconciled ? ' ok' : ' ok'}`}>
+                        {item.isReconciled ? 'reconciled' : isIncome ? 'received' : 'paid'}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ——— Notion preview card ———
 function NotionCard({ envelopes, bucketFilter }: { envelopes: EnvelopeWithOverride[]; bucketFilter: BucketFilter }) {
   const typeEmoji: Record<string, string> = { income: '💰', expense: '💸', transfer: '↔' };
@@ -853,7 +967,7 @@ export default function Dashboard({ dateRange, onDateRangeChange }: Props) {
 
         <div style={{ height: 22 }} />
 
-        {/* Row 2: Ledger | Notion preview */}
+        {/* Row 2: Upcoming ledger | Last 30 days */}
         <section className="row2">
           <LedgerCard
             entries={entries}
@@ -861,6 +975,13 @@ export default function Dashboard({ dateRange, onDateRangeChange }: Props) {
             overdueTotals={overdueTotals}
             bucketFilter={bucketFilter}
           />
+          <Last30dCard bucketFilter={bucketFilter} />
+        </section>
+
+        <div style={{ height: 22 }} />
+
+        {/* Row 3: Notion preview */}
+        <section>
           <NotionCard envelopes={envelopes} bucketFilter={bucketFilter} />
         </section>
 
