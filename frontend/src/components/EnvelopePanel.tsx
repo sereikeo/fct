@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  getEnvelopes, getSpend, postSpend, deleteSpend, patchEnvelope,
+  getEnvelopes, getSpend, postSpend, deleteSpend, patchSpend, patchEnvelope,
   QUERY_KEYS, EnvelopeWithOverride, SpendEntry,
 } from '../services/api';
 
@@ -228,6 +228,15 @@ function VariableRow({ envelope, entries, monthlyBudget, period }: VariableRowPr
     },
   });
 
+  const flip = useMutation({
+    mutationFn: (e: SpendEntry) =>
+      patchSpend(e.id, { payment: e.payment === 'credit' ? 'cash' : 'credit' }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.spend(period) });
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.cashflow('', '') });
+    },
+  });
+
   return (
     <div style={{ marginBottom: entries.length > 0 || adding ? 14 : 0 }}>
       <div className="var-row">
@@ -316,6 +325,17 @@ function VariableRow({ envelope, entries, monthlyBudget, period }: VariableRowPr
               </span>
               <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'JetBrains Mono, monospace', color: e.payment === 'credit' ? 'var(--cc)' : undefined }}>
                 {fmtAUD(e.amount)}
+                <button
+                  onClick={() => flip.mutate(e)}
+                  disabled={flip.isPending}
+                  title={e.payment === 'credit' ? 'Paid by credit card — click to switch to cash' : 'Paid by cash — click to switch to credit'}
+                  style={{
+                    background: 'none', border: '1px solid var(--line)', borderRadius: 4,
+                    color: e.payment === 'credit' ? 'var(--cc)' : 'var(--mute)',
+                    cursor: 'pointer', fontSize: 10, padding: '0 4px', lineHeight: '14px',
+                    fontFamily: 'Inter, sans-serif',
+                  }}
+                >{e.payment === 'credit' ? 'CC' : 'Cash'}</button>
                 <button
                   onClick={() => remove.mutate(e.id)}
                   style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 13, padding: 0, lineHeight: 1 }}

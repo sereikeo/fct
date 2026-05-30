@@ -213,6 +213,14 @@ export async function postSpend(body: {
   return data.entry;
 }
 
+export async function patchSpend(
+  id: string,
+  body: { amount?: number; payment?: 'cash' | 'credit'; note?: string | null }
+): Promise<SpendEntry> {
+  const { data } = await client.patch(`/spend/${id}`, body);
+  return data.entry;
+}
+
 export async function deleteSpend(id: string): Promise<void> {
   await client.delete(`/spend/${id}`);
 }
