@@ -90,7 +90,7 @@ function QuickAdd({ envelope, period, onClose }: QuickAddProps) {
     }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: QUERY_KEYS.spend(period) });
-      qc.invalidateQueries({ queryKey: QUERY_KEYS.cashflow('', '') });
+      qc.invalidateQueries({ queryKey: ['cashflow'] });
       onClose();
     },
   });
@@ -224,7 +224,7 @@ function VariableRow({ envelope, entries, monthlyBudget, period }: VariableRowPr
     mutationFn: (id: string) => deleteSpend(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: QUERY_KEYS.spend(period) });
-      qc.invalidateQueries({ queryKey: QUERY_KEYS.cashflow('', '') });
+      qc.invalidateQueries({ queryKey: ['cashflow'] });
     },
   });
 
@@ -233,7 +233,7 @@ function VariableRow({ envelope, entries, monthlyBudget, period }: VariableRowPr
       patchSpend(e.id, { payment: e.payment === 'credit' ? 'cash' : 'credit' }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: QUERY_KEYS.spend(period) });
-      qc.invalidateQueries({ queryKey: QUERY_KEYS.cashflow('', '') });
+      qc.invalidateQueries({ queryKey: ['cashflow'] });
     },
   });
 
