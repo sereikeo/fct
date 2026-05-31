@@ -747,6 +747,28 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
       default:            occDates = [];
     }
 
+    // Backfill the current calendar month if the forward-only expansion missed
+    // it. Notion advances an item's due_date to the next cycle the moment a
+    // placeholder is marked paid — once the anchor sits in a future month,
+    // expandMonthly/expandFixed stop emitting the month we're actually in,
+    // silently dropping both this month's remaining budget AND any spend
+    // already logged against it (the balance jumps up as if it was never
+    // spent). Only backfill when the recurrence genuinely lands in the current
+    // month, so quarterly/annual/once envelopes aren't projected into a month
+    // they don't belong to. Past months are intentionally left alone (their
+    // credit spend is handled by step 5b below; cash already hit the bank).
+    const monthsFromAnchor =
+      (todayDate.getFullYear() - anchor.getFullYear()) * 12 +
+      (todayDate.getMonth() - anchor.getMonth());
+    const currentIsOccurrence =
+      item.frequency === 'weekly' || item.frequency === 'fortnightly' ? true
+      : item.frequency === 'monthly' ? monthsFromAnchor % interval === 0
+      : item.frequency === 'annual'  ? todayDate.getMonth() === anchor.getMonth() && monthsFromAnchor % (12 * interval) === 0
+      : false; // 'once' never recurs into the current month
+    if (currentIsOccurrence && !occDates.some(d => fmtPeriod(d) === currentPeriod)) {
+      occDates.push(clampDay(todayDate.getFullYear(), todayDate.getMonth(), anchor.getDate()));
+    }
+
     const periodsSeen = new Set<string>();
 
     // Lane-aware: each spend entry is routed by its own payment lane (cash →
