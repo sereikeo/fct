@@ -115,17 +115,23 @@ const VISIBLE_GROUPS: { status: ImportStatus; label: string }[] = [
   { status: 'income',         label: 'Inflows · confirm in Notion' },
 ];
 
+function groupByTarget(rows: ImportProposal[]): [string, ImportProposal[]][] {
+  const m = new Map<string, ImportProposal[]>();
+  for (const r of rows) {
+    const k = r.targetName ?? 'Uncategorised';
+    if (!m.has(k)) m.set(k, []);
+    m.get(k)!.push(r);
+  }
+  return [...m.entries()].sort((a, b) => b[1].length - a[1].length);
+}
+
 function ProposalRow({ p }: { p: ImportProposal }) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '54px 1fr 130px 78px 36px', gap: 8, alignItems: 'center', padding: '4px 0', fontSize: 11.5, borderTop: '1px solid var(--line-2)' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: '50px 1fr 76px 26px', gap: 8, alignItems: 'center', padding: '3px 0 3px 12px', fontSize: 11.5, borderTop: '1px solid var(--line-2)' }}>
       <span style={{ color: 'var(--mute)', fontFamily: 'JetBrains Mono, monospace' }}>{p.valueDate.slice(5)}</span>
       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={p.description}>{p.description}</span>
-      <span style={{ color: 'var(--ink-2)' }}>
-        {p.targetName ?? (p.status === 'income' ? '—' : '?')}
-        {p.note && p.status === 'reconcile-bill' ? <span style={{ color: 'var(--mute)' }}> · {p.note}</span> : null}
-      </span>
       <span style={{ textAlign: 'right', fontFamily: 'JetBrains Mono, monospace', color: p.amount < 0 ? 'var(--ink)' : 'var(--green)' }}>{fmtAUDc(p.amount)}</span>
-      <span title={p.confidence} style={{ justifySelf: 'center', width: 8, height: 8, borderRadius: '50%', background: CONF_COLOR[p.confidence] }} />
+      <span title={`${p.confidence} confidence`} style={{ justifySelf: 'center', width: 8, height: 8, borderRadius: '50%', background: CONF_COLOR[p.confidence] }} />
     </div>
   );
 }
@@ -144,11 +150,19 @@ function ImportPreview({ result }: { result: ImportPreviewResult }) {
         const group = rows.filter(r => r.status === status);
         if (group.length === 0) return null;
         return (
-          <div key={status} style={{ marginBottom: 12 }}>
-            <div style={{ fontSize: 10.5, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--mute)', marginBottom: 2 }}>
+          <div key={status} style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 10.5, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--mute)', marginBottom: 4 }}>
               {label} ({group.length})
             </div>
-            {group.map(p => <ProposalRow key={p.fingerprint} p={p} />)}
+            {groupByTarget(group).map(([target, items]) => (
+              <div key={target} style={{ marginBottom: 8 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5, fontWeight: 600, color: 'var(--ink-2)' }}>
+                  <span>{target} <span style={{ color: 'var(--mute)', fontWeight: 400 }}>· {items.length}</span></span>
+                  {status === 'reconcile-bill' && items[0].note ? <span style={{ color: 'var(--mute)', fontWeight: 400 }}>{items[0].note}</span> : null}
+                </div>
+                {items.map(p => <ProposalRow key={p.fingerprint} p={p} />)}
+              </div>
+            ))}
           </div>
         );
       })}

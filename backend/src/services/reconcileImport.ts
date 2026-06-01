@@ -64,7 +64,7 @@ const PAYEE_RULES: PayeeRule[] = [
   // Bills (match by payee; confidence refined by amount-vs-forecast below)
   { re: /OVO ENERGY/i,                       item: 'OVO Electricity',     kind: 'bill' },
   { re: /GLOBIRD/i,                          item: 'GloBird Energy Gas',  kind: 'bill' },
-  { re: /JELC|KNOXFIELD/i,                   item: 'Childcare',           kind: 'bill' },
+  { re: /\bJELC\b/i,                         item: 'Childcare',           kind: 'bill' }, // provider, NOT the suburb (Knoxfield)
   { re: /SUPERLOOP/i,                        item: 'Superloop Internet',  kind: 'bill' },
   { re: /SOUTH EAST WATER/i,                 item: 'South East Water',    kind: 'bill' },
   { re: /HOSPITALS CONTRI/i,                 item: 'Health insurance',    kind: 'bill' },
