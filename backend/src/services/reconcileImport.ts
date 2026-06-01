@@ -217,7 +217,7 @@ export function previewImport(account: ImportAccount, csv: string, from?: string
     // review rather than silently creating a duplicate.
     const near = spends.find(s =>
       Math.abs(s.amount) !== abs &&
-      Math.abs(Math.abs(s.amount) - abs) <= Math.max(0.5, abs * 0.02) &&
+      Math.abs(Math.abs(s.amount) - abs) <= Math.max(0.05, abs * 0.03) &&
       withinDays(s.date, row.valueDate, 3),
     );
     if (near) {
@@ -252,7 +252,8 @@ export function previewImport(account: ImportAccount, csv: string, from?: string
   // Combine/split: two same-day new-spend rows whose amounts sum to a single
   // hand-logged entry (e.g. bank 7.10 + 39.00 logged once as 46.10). Flag both
   // for review so a commit doesn't double up.
-  const newSpends = proposals.filter(p => p.status === 'new-spend');
+  // Candidates include 'review' rows too, so a near-flagged row can still pair.
+  const newSpends = proposals.filter(p => p.status === 'new-spend' || p.status === 'review');
   for (let i = 0; i < newSpends.length; i++) {
     for (let j = i + 1; j < newSpends.length; j++) {
       const a = newSpends[i], b = newSpends[j];
