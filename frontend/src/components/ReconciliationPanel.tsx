@@ -106,6 +106,16 @@ const CONF_COLOR: Record<ImportProposal['confidence'], string> = {
   high: 'var(--green)', med: 'var(--mute)', low: 'var(--accent)',
 };
 
+// Coloured header per group so sections read at a glance:
+// blue = bills/adjust · dark = new spend · rust = check these · green = income.
+const GROUP_STYLE: Record<string, { bg: string; fg: string }> = {
+  'reconcile-bill': { bg: 'rgba(31,79,122,0.14)',  fg: 'var(--personal)' },
+  'new-spend':      { bg: 'rgba(19,18,17,0.12)',   fg: 'var(--ink)' },
+  'review':         { bg: 'rgba(199,68,43,0.14)',  fg: 'var(--accent)' },
+  'unmatched':      { bg: 'rgba(199,68,43,0.14)',  fg: 'var(--accent)' },
+  'income':         { bg: 'rgba(46,106,58,0.14)',  fg: 'var(--green)' },
+};
+
 // Status groups, in the order we want them surfaced. `matched`/`seen` are the
 // skip groups — collapsed by default so the eye goes to what needs attention.
 const VISIBLE_GROUPS: { status: ImportStatus; label: string }[] = [
@@ -170,16 +180,17 @@ function ImportPreview({ result }: { result: ImportPreviewResult }) {
       {VISIBLE_GROUPS.map(({ status, label }) => {
         const group = rows.filter(r => r.status === status);
         if (group.length === 0) return null;
+        const gs = GROUP_STYLE[status] ?? { bg: 'var(--paper-3)', fg: 'var(--ink)' };
         return (
-          <div key={status} style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 10.5, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--mute)', marginBottom: 4 }}>
-              {label} ({group.length})
+          <div key={status} style={{ marginBottom: 16 }}>
+            <div style={{ background: gs.bg, color: gs.fg, fontSize: 11, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', padding: '5px 10px', borderRadius: 8, marginBottom: 6 }}>
+              {label} · {group.length}
             </div>
             {groupByTarget(group).map(([target, items]) => (
-              <div key={target} style={{ marginBottom: 8 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5, fontWeight: 600, color: 'var(--ink-2)' }}>
+              <div key={target} style={{ marginBottom: 8, paddingLeft: 2 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, fontWeight: 600, color: 'var(--ink)', padding: '2px 4px' }}>
                   <span>{target} <span style={{ color: 'var(--mute)', fontWeight: 400 }}>· {items.length}</span></span>
-                  {status === 'reconcile-bill' && items[0].note ? <span style={{ color: 'var(--mute)', fontWeight: 400 }}>{items[0].note}</span> : null}
+                  {status === 'reconcile-bill' && items[0].note ? <span style={{ color: 'var(--mute)', fontWeight: 400, fontSize: 11 }}>{items[0].note}</span> : null}
                 </div>
                 {items.map(p => <ProposalRow key={p.fingerprint} p={p} />)}
               </div>
