@@ -257,7 +257,7 @@ export async function patchTransaction(
 // --- CSV reconciliation import (Phase 1: preview / dry-run, no writes) ---
 export type ImportAccount = 'maple-debit' | 'personal-cc';
 export type ImportStatus =
-  | 'seen' | 'matched' | 'new-spend' | 'reconcile-bill' | 'income' | 'unmatched';
+  | 'seen' | 'matched' | 'review' | 'new-spend' | 'reconcile-bill' | 'income' | 'unmatched';
 
 export interface ImportProposal {
   fingerprint: string;

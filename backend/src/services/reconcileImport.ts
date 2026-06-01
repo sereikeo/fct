@@ -33,7 +33,8 @@ export interface ParsedRow {
 
 export type ProposalStatus =
   | 'seen'            // already processed in a prior import (idempotent skip)
-  | 'matched'         // matches an existing hand-logged spend / reconciliation
+  | 'matched'         // matches an existing hand-logged spend / reconciliation / confirmed bill
+  | 'review'          // close to (or sums to) something already logged — likely a dup, confirm
   | 'new-spend'       // create a spend_log entry in an envelope
   | 'reconcile-bill'  // reconcile a forecast bill to this actual
   | 'income'          // inflow — confirm in Notion, default skip
@@ -179,6 +180,12 @@ export function previewImport(account: ImportAccount, csv: string, from?: string
     (db.prepare('SELECT fingerprint FROM import_log WHERE account = ?').all(account) as Array<{ fingerprint: string }>)
       .map(r => r.fingerprint),
   );
+  // Confirmed transactions: a bill paid at its forecast amount leaves no
+  // spend_log or reconciliation row, so it must be checked here too — otherwise
+  // it looks unreconciled and the importer would propose a duplicate.
+  const confirmed = db
+    .prepare("SELECT t.amount, COALESCE(t.confirmed_date, t.expected_date) AS d FROM transactions t JOIN budget_items bi ON bi.notion_page_id = t.notion_page_id WHERE bi.bucket = ? AND t.confirmed = 1")
+    .all(bucket) as Array<{ amount: number; d: string | null }>;
 
   const fallback = itemByName.get(FALLBACK_ENVELOPE[account].toLowerCase()) ?? null;
 
@@ -194,15 +201,27 @@ export function previewImport(account: ImportAccount, csv: string, from?: string
       return { ...base, status: 'seen', confidence: 'high', targetItemId: null, targetName: null, bucket: null, lane: null, note: 'already imported on a prior run' };
     }
 
-    const dupSpend = spends.find(s => Math.abs(s.amount) === abs && withinDays(s.date, row.valueDate, 3));
-    const dupRecon = recons.find(r => r.actual_amount === abs && withinDays(r.date, row.valueDate, 3));
-    if (dupSpend || dupRecon) {
-      return { ...base, status: 'matched', confidence: 'high', targetItemId: null, targetName: null, bucket, lane, note: 'already logged by hand' };
+    const exactSpend = spends.find(s => Math.abs(s.amount) === abs && withinDays(s.date, row.valueDate, 3));
+    const exactRecon = recons.find(r => r.actual_amount === abs && withinDays(r.date, row.valueDate, 3));
+    const exactTx    = confirmed.find(c => c.d !== null && Math.abs(c.amount) === abs && withinDays(c.d, row.valueDate, 3));
+    if (exactSpend || exactRecon || exactTx) {
+      return { ...base, status: 'matched', confidence: 'high', targetItemId: null, targetName: null, bucket, lane, note: 'already logged / reconciled' };
     }
 
     // Inflows: contributions/transfers/refunds — handled by confirming in Notion.
     if (row.amount > 0) {
       return { ...base, status: 'income', confidence: INCOME_RE.test(row.description) ? 'med' : 'low', targetItemId: null, targetName: null, bucket, lane, note: 'inflow — confirm transfer/contribution in Notion' };
+    }
+
+    // Close-but-not-exact to a logged spend (e.g. a cents typo) → flag for
+    // review rather than silently creating a duplicate.
+    const near = spends.find(s =>
+      Math.abs(s.amount) !== abs &&
+      Math.abs(Math.abs(s.amount) - abs) <= Math.max(0.5, abs * 0.02) &&
+      withinDays(s.date, row.valueDate, 3),
+    );
+    if (near) {
+      return { ...base, status: 'review', confidence: 'low', targetItemId: null, targetName: null, bucket, lane, note: `≈ your logged ${Math.abs(near.amount).toFixed(2)} — confirm not a duplicate` };
     }
 
     const rule = PAYEE_RULES.find(r => r.re.test(row.description));
@@ -230,13 +249,31 @@ export function previewImport(account: ImportAccount, csv: string, from?: string
     };
   });
 
+  // Combine/split: two same-day new-spend rows whose amounts sum to a single
+  // hand-logged entry (e.g. bank 7.10 + 39.00 logged once as 46.10). Flag both
+  // for review so a commit doesn't double up.
+  const newSpends = proposals.filter(p => p.status === 'new-spend');
+  for (let i = 0; i < newSpends.length; i++) {
+    for (let j = i + 1; j < newSpends.length; j++) {
+      const a = newSpends[i], b = newSpends[j];
+      if (a.valueDate !== b.valueDate) continue;
+      const sum = Math.abs(a.amount) + Math.abs(b.amount);
+      const hit = spends.find(s => Math.abs(Math.abs(s.amount) - sum) <= 0.02 && withinDays(s.date, a.valueDate, 3));
+      if (hit) {
+        const note = `≈ your combined entry ${Math.abs(hit.amount).toFixed(2)} — confirm not a duplicate`;
+        a.status = 'review'; a.confidence = 'low'; a.note = note; a.targetItemId = null; a.targetName = null;
+        b.status = 'review'; b.confidence = 'low'; b.note = note; b.targetItemId = null; b.targetName = null;
+      }
+    }
+  }
+
   const summary = proposals.reduce(
     (acc, p) => {
       acc[p.status] += 1;
       if (p.status === 'new-spend') acc.newOutflow += Math.abs(p.amount);
       return acc;
     },
-    { seen: 0, matched: 0, 'new-spend': 0, 'reconcile-bill': 0, income: 0, unmatched: 0, newOutflow: 0 } as PreviewResult['summary'],
+    { seen: 0, matched: 0, review: 0, 'new-spend': 0, 'reconcile-bill': 0, income: 0, unmatched: 0, newOutflow: 0 } as PreviewResult['summary'],
   );
 
   return { account, parsed: rows.length, rows: proposals, summary };

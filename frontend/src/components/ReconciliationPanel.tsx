@@ -111,6 +111,7 @@ const CONF_COLOR: Record<ImportProposal['confidence'], string> = {
 const VISIBLE_GROUPS: { status: ImportStatus; label: string }[] = [
   { status: 'reconcile-bill', label: 'Bills · reconcile to actual' },
   { status: 'new-spend',      label: 'New · will be created' },
+  { status: 'review',         label: 'Possible duplicates · confirm' },
   { status: 'unmatched',      label: 'Needs review' },
   { status: 'income',         label: 'Inflows · confirm in Notion' },
 ];
