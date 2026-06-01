@@ -116,3 +116,22 @@ CREATE TABLE IF NOT EXISTS import_log (
 );
 
 CREATE INDEX IF NOT EXISTS idx_import_log_fingerprint ON import_log (fingerprint);
+
+-- FCT-native one-off entries (income or expense) that don't belong to the
+-- recurring Notion budget — overtime pay, a reimbursement deposit, an ad-hoc
+-- cost. SQLite-only, never synced to Notion. The cash engine applies them on
+-- their date (income → inflow, expense → outflow; credit-lane expense bundles
+-- onto the CC statement like any other Credit item).
+CREATE TABLE IF NOT EXISTS manual_entries (
+  id          TEXT PRIMARY KEY,
+  date        TEXT NOT NULL,
+  type        TEXT NOT NULL CHECK (type IN ('income', 'expense')),
+  bucket      TEXT NOT NULL CHECK (bucket IN ('personal', 'maple')),
+  amount      REAL NOT NULL,
+  lane        TEXT NOT NULL DEFAULT 'cash' CHECK (lane IN ('cash', 'credit')),
+  note        TEXT,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_manual_entries_date ON manual_entries (date);

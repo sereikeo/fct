@@ -369,6 +369,8 @@ const stmtSpendLog     = db.prepare(`
   ORDER  BY sl.date
 `);
 
+const stmtManual = db.prepare('SELECT id, date, type, bucket, amount, lane, note FROM manual_entries');
+
 interface TxRow {
   id: string;
   notion_page_id: string;
@@ -844,6 +846,30 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
 
   // (Past-period credit spend no longer needs a separate pass — the per-spend
   //  loop in step 5 now places every logged spend regardless of period.)
+
+  // 6. Manual one-off entries (FCT-native income/expense, not from Notion).
+  //    Placed on their own date: income → inflow, expense → outflow (cash on
+  //    the date, or credit → bundled onto the CC statement). Past = confirmed,
+  //    future = projected; both move the balance. Cash entries before the seed
+  //    are already baked into the opening balance, so skip them.
+  interface ManualRow { id: string; date: string; type: 'income' | 'expense'; bucket: Bucket; amount: number; lane: 'cash' | 'credit'; note: string | null; }
+  for (const m of stmtManual.all() as ManualRow[]) {
+    if (m.date > to) continue;
+    const routeKey = m.type === 'expense' && m.lane === 'credit' ? 'Credit' : 'Cash';
+    if (routeKey !== 'Credit' && m.date < walkStartStr) continue;
+    placeOnDay(
+      {
+        date: m.date, budgetItemId: m.id, txId: null,
+        name: m.note?.trim() || (m.type === 'income' ? 'One-off income' : 'One-off expense'),
+        category: 'One-off', type: m.type, bucket: m.bucket,
+        payment: routeKey, forecastAmount: 0,
+        overrideAmount: null, actualAmount: m.amount,
+        delta: null, isReconciled: true,
+      },
+      routeKey, m.date,
+      { isConfirmed: m.date <= todayStr, isPending: false, isProjected: m.date > todayStr },
+    );
+  }
 
   // Day-by-day balance computation
   let balP = initBalP,  balM = initBalM;

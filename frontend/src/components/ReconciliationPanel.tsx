@@ -6,9 +6,13 @@ import {
   deleteReconciliation,
   getEnvelopes,
   previewImport,
+  getManualEntries,
+  postManualEntry,
+  deleteManualEntry,
   QUERY_KEYS,
   ReconciliationRecord,
   EnvelopeWithOverride,
+  ManualEntry,
   ImportAccount,
   ImportProposal,
   ImportPreviewResult,
@@ -89,6 +93,84 @@ function AddForm({ envelopes, bucketFilter, onClose }: AddFormProps) {
           <div style={{ fontSize: 11, color: 'var(--mute)', marginBottom: 4 }}>Actual</div>
           <input type="number" value={actualAmount} onChange={(e) => setActualAmount(e.target.value)} placeholder="0.00" style={inputStyle} />
         </div>
+      </div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button className="btn" onClick={() => add.mutate()} disabled={!valid || add.isPending} style={{ fontSize: 12, padding: '6px 14px' }}>
+          {add.isPending ? 'Saving…' : 'Save'}
+        </button>
+        <button className="btn ghost" onClick={onClose} style={{ fontSize: 12, padding: '6px 14px' }}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
+// --- One-off income / expense (FCT-native, not synced to Notion) -----------
+
+function OneOffForm({ bucketFilter, onClose }: { bucketFilter: 'all' | 'personal' | 'maple'; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [type, setType] = useState<'income' | 'expense'>('income');
+  const [bucket, setBucket] = useState<'personal' | 'maple'>(bucketFilter === 'maple' ? 'maple' : 'personal');
+  const [amount, setAmount] = useState('');
+  const [lane, setLane] = useState<'cash' | 'credit'>('cash');
+  const [note, setNote] = useState('');
+
+  const add = useMutation({
+    mutationFn: () => postManualEntry({
+      date, type, bucket, amount: parseFloat(amount),
+      lane: type === 'expense' ? lane : undefined,
+      note: note || undefined,
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.manualEntries });
+      qc.invalidateQueries({ queryKey: ['cashflow'] });
+      onClose();
+    },
+  });
+
+  const valid = date && amount && parseFloat(amount) > 0;
+  const inputStyle: React.CSSProperties = {
+    width: '100%', background: 'var(--paper)', border: '1px solid var(--line)',
+    borderRadius: 8, padding: '5px 9px', fontSize: 12.5, color: 'var(--ink)',
+    fontFamily: 'Inter, sans-serif', outline: 'none',
+  };
+  const seg = (active: boolean): React.CSSProperties => ({
+    flex: 1, border: '1px solid var(--line)', borderRadius: 6, padding: '4px 0', fontSize: 12,
+    cursor: 'pointer', background: active ? 'var(--ink)' : 'var(--paper)', color: active ? 'var(--paper)' : 'var(--ink-2)',
+  });
+
+  return (
+    <div style={{ padding: '14px 20px', background: 'var(--paper-2)', borderBottom: '1px solid var(--line-2)' }}>
+      <div style={{ fontSize: 10.5, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-2)', marginBottom: 10 }}>
+        One-off entry
+      </div>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+        <button type="button" onClick={() => setType('income')} style={seg(type === 'income')}>Income</button>
+        <button type="button" onClick={() => setType('expense')} style={seg(type === 'expense')}>Expense</button>
+      </div>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+        <button type="button" onClick={() => setBucket('personal')} style={seg(bucket === 'personal')}>Personal</button>
+        <button type="button" onClick={() => setBucket('maple')} style={seg(bucket === 'maple')}>Maple</button>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
+        <div>
+          <div style={{ fontSize: 11, color: 'var(--mute)', marginBottom: 4 }}>Date</div>
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={inputStyle} />
+        </div>
+        <div>
+          <div style={{ fontSize: 11, color: 'var(--mute)', marginBottom: 4 }}>Amount</div>
+          <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" style={inputStyle} />
+        </div>
+        <div style={{ gridColumn: '1 / -1' }}>
+          <div style={{ fontSize: 11, color: 'var(--mute)', marginBottom: 4 }}>Note (optional)</div>
+          <input type="text" value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Overtime pay" style={inputStyle} />
+        </div>
+        {type === 'expense' && (
+          <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 6 }}>
+            <button type="button" onClick={() => setLane('cash')} style={seg(lane === 'cash')}>Cash</button>
+            <button type="button" onClick={() => setLane('credit')} style={seg(lane === 'credit')}>CC</button>
+          </div>
+        )}
       </div>
       <div style={{ display: 'flex', gap: 8 }}>
         <button className="btn" onClick={() => add.mutate()} disabled={!valid || add.isPending} style={{ fontSize: 12, padding: '6px 14px' }}>
@@ -238,6 +320,7 @@ function ImportPreview({ result }: { result: ImportPreviewResult }) {
 export default function ReconciliationPanel({ bucketFilter = 'all' }: { bucketFilter?: 'all' | 'personal' | 'maple' }) {
   const qc = useQueryClient();
   const [showForm, setShowForm] = useState(false);
+  const [showOneOff, setShowOneOff] = useState(false);
   const [account, setAccount] = useState<ImportAccount>('maple-debit');
   const [from, setFrom] = useState(() => {
     const d = new Date();
@@ -257,6 +340,17 @@ export default function ReconciliationPanel({ bucketFilter = 'all' }: { bucketFi
     mutationFn: (id: string) => deleteReconciliation(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: QUERY_KEYS.reconciliation }),
   });
+
+  const { data: manualData } = useQuery({ queryKey: QUERY_KEYS.manualEntries, queryFn: getManualEntries });
+  const manualRemove = useMutation({
+    mutationFn: (id: string) => deleteManualEntry(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.manualEntries });
+      qc.invalidateQueries({ queryKey: ['cashflow'] });
+    },
+  });
+  const manualEntries: ManualEntry[] = (manualData?.entries ?? [])
+    .filter(e => bucketFilter === 'all' || e.bucket === bucketFilter);
 
   function ingestText(text: string) {
     if (text.trim()) preview.mutate(text);
@@ -297,15 +391,23 @@ export default function ReconciliationPanel({ bucketFilter = 'all' }: { bucketFi
           />
           <button
             className="btn ghost"
-            onClick={() => setShowForm(v => !v)}
+            onClick={() => { setShowOneOff(v => !v); setShowForm(false); }}
             style={{ fontSize: 11, padding: '3px 10px' }}
           >
-            + Add
+            + One-off
+          </button>
+          <button
+            className="btn ghost"
+            onClick={() => { setShowForm(v => !v); setShowOneOff(false); }}
+            style={{ fontSize: 11, padding: '3px 10px' }}
+          >
+            + Reconcile
           </button>
         </div>
       </div>
 
       {showForm && <AddForm envelopes={envelopes} bucketFilter={bucketFilter} onClose={() => setShowForm(false)} />}
+      {showOneOff && <OneOffForm bucketFilter={bucketFilter} onClose={() => setShowOneOff(false)} />}
 
       <div className="bd">
         <input
@@ -337,6 +439,32 @@ export default function ReconciliationPanel({ bucketFilter = 'all' }: { bucketFi
           </p>
         )}
         {preview.data && <ImportPreview result={preview.data} />}
+
+        {manualEntries.length > 0 && (
+          <>
+            <div style={{ fontSize: 11, color: 'var(--mute)', letterSpacing: '0.1em', textTransform: 'uppercase', textAlign: 'center', margin: '18px 0 10px' }}>
+              one-off entries
+            </div>
+            {manualEntries.slice(0, 6).map((e) => (
+              <div key={e.id} className="kv">
+                <span className="k">
+                  {e.date} · {e.note || (e.type === 'income' ? 'Income' : 'Expense')}
+                  <span style={{ color: 'var(--mute)' }}> · {e.bucket}{e.type === 'expense' && e.lane === 'credit' ? ' · CC' : ''}</span>
+                </span>
+                <span className="v" style={{ display: 'flex', alignItems: 'center', gap: 8, color: e.type === 'income' ? 'var(--green)' : 'var(--ink)' }}>
+                  {e.type === 'income' ? '+' : '−'}A${e.amount.toFixed(2)}
+                  <button
+                    onClick={() => manualRemove.mutate(e.id)}
+                    style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 14, padding: 0, lineHeight: 1 }}
+                    title="Delete"
+                  >
+                    ×
+                  </button>
+                </span>
+              </div>
+            ))}
+          </>
+        )}
 
         {records.length > 0 && (
           <>

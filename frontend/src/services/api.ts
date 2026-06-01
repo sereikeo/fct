@@ -145,6 +145,7 @@ export const QUERY_KEYS = {
   reconciliation: ['reconciliation'] as const,
   spend: (period: string) => ['spend', period] as const,
   ccOverrides: ['cc-overrides'] as const,
+  manualEntries: ['manual-entries'] as const,
   health: ['health'] as const,
 };
 
@@ -284,4 +285,36 @@ export interface ImportPreviewResult {
 export async function previewImport(account: ImportAccount, csv: string, from?: string): Promise<ImportPreviewResult> {
   const { data } = await client.post('/reconciliation/import/preview', { account, csv, from });
   return data;
+}
+
+// --- FCT-native one-off entries (income / expense, not synced to Notion) ---
+export interface ManualEntry {
+  id: string;
+  date: string;
+  type: 'income' | 'expense';
+  bucket: Bucket;
+  amount: number;
+  lane: 'cash' | 'credit';
+  note: string | null;
+}
+
+export async function getManualEntries(): Promise<{ entries: ManualEntry[] }> {
+  const { data } = await client.get('/manual-entries');
+  return data;
+}
+
+export async function postManualEntry(body: {
+  date: string;
+  type: 'income' | 'expense';
+  bucket: Bucket;
+  amount: number;
+  lane?: 'cash' | 'credit';
+  note?: string;
+}): Promise<ManualEntry> {
+  const { data } = await client.post('/manual-entries', body);
+  return data.entry;
+}
+
+export async function deleteManualEntry(id: string): Promise<void> {
+  await client.delete(`/manual-entries/${id}`);
 }
