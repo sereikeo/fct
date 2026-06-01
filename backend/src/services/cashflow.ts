@@ -747,16 +747,14 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
       default:            occDates = [];
     }
 
-    // Backfill the current calendar month if the forward-only expansion missed
-    // it. Notion advances an item's due_date to the next cycle the moment a
-    // placeholder is marked paid — once the anchor sits in a future month,
-    // expandMonthly/expandFixed stop emitting the month we're actually in,
-    // silently dropping both this month's remaining budget AND any spend
-    // already logged against it (the balance jumps up as if it was never
-    // spent). Only backfill when the recurrence genuinely lands in the current
-    // month, so quarterly/annual/once envelopes aren't projected into a month
-    // they don't belong to. Past months are intentionally left alone (their
-    // credit spend is handled by step 5b below; cash already hit the bank).
+    // Ensure the current calendar month is covered for the remainder projection
+    // even when the forward-only expansion missed it. Notion advances due_date
+    // to the next cycle when a placeholder is marked paid, so the anchor can sit
+    // in a future month; without this the current month would get no remaining-
+    // budget forecast. (Actual logged spend no longer depends on this — it is
+    // placed directly below.) Only backfill when the recurrence genuinely lands
+    // in the current month, so quarterly/annual/once envelopes aren't projected
+    // into a month they don't belong to.
     const monthsFromAnchor =
       (todayDate.getFullYear() - anchor.getFullYear()) * 12 +
       (todayDate.getMonth() - anchor.getMonth());
@@ -769,19 +767,51 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
       occDates.push(clampDay(todayDate.getFullYear(), todayDate.getMonth(), anchor.getDate()));
     }
 
-    const periodsSeen = new Set<string>();
-
-    // Lane-aware: each spend entry is routed by its own payment lane (cash →
-    // direct cash-flow hit, credit → bundled into next CC statement). The
-    // forecast remainder draws down only the lane that matches the envelope's
-    // default payment — the other lane is purely additive on top of forecast.
+    // Default payment lane for this envelope — used only for the remainder calc
+    // below. The other lane stays additive on top of forecast.
     const matchingLane: 'cash' | 'credit' =
       item.payment === 'Credit' ? 'credit' : 'cash';
 
+    // Place every logged spend on its OWN date, independent of the recurrence
+    // schedule. Placement used to be nested inside the occDate loop, so a month
+    // with no generated occurrence (e.g. after Notion advanced due_date past it)
+    // silently dropped all its spend — inflating the balance as if it was never
+    // spent. Driving placement off the spend's own date removes that whole class
+    // of bug. Routing: 'credit' → CC statement bundle, 'cash' → direct balance
+    // hit. Cash before walkStart already settled into the opening balance; credit
+    // before walkStart is still outstanding and placeOnDay lands it on the
+    // upcoming statement (gated against walkStart). Display name prefers the
+    // per-spend note, else the envelope name.
+    for (const s of spendRows) {
+      if (s.budget_item_id !== item.id) continue;
+      if (s.date > to) continue;
+      const isCreditLane = s.payment === 'credit';
+      if (!isCreditLane && s.date < walkStartStr) continue;
+      const routeKey    = isCreditLane ? 'Credit' : 'Cash';
+      const displayName = s.note?.trim() ? s.note.trim() : item.name;
+      placeOnDay(
+        {
+          date: s.date, budgetItemId: item.id, txId: null, name: displayName,
+          category: item.category, type: item.type, bucket: item.bucket,
+          payment: routeKey, forecastAmount: 0,
+          overrideAmount: null, actualAmount: s.amount,
+          delta: null, isReconciled: true,
+        },
+        routeKey, s.date,
+        { isConfirmed: true, isPending: false, isProjected: false },
+      );
+    }
+
+    // Project the remaining forecast budget for the current and future
+    // occurrence periods only — past months show actuals (placed above), no
+    // remainder. Driven by the recurrence occDates (anchor-derived + the
+    // current-month backfill).
+    const periodsSeen = new Set<string>();
     for (const occDate of occDates) {
       const period = fmtPeriod(occDate);
       if (periodsSeen.has(period)) continue;
       periodsSeen.add(period);
+      if (period < currentPeriod) continue;
 
       const entries       = spendByItemPeriod.get(`${item.id}:${period}`) ?? [];
       const matchingTotal = entries
@@ -789,90 +819,31 @@ export function computeCashFlow(from: string, to: string): CashFlowResult {
         .reduce((t, e) => t + e.amount, 0);
       const cap           = overrideMap.get(`${item.id}:${period}`) ?? item.forecast_amount;
       const remaining     = Math.max(0, cap - matchingTotal);
+      if (remaining <= 0) continue;
 
-      // Place each actual spend entry on its real date, routed by its own
-      // lane: 'credit' → CC bundling, 'cash' → direct balance hit. The
-      // routing key ('Credit' triggers placeOnDay's CC branch) is separate
-      // from the display label shown in the LineItem.
-      for (const entry of entries) {
-        if (entry.date > to) continue;
-        const isCreditLane = entry.payment === 'credit';
-        // Cash entries dated before walkStart already hit the bank — skip them.
-        // Credit entries dated before walkStart are still outstanding on the
-        // card; placeOnDay will land them on the upcoming statement-due date,
-        // which it already gates against walkStart.
-        if (!isCreditLane && entry.date < walkStartStr) continue;
-        const routeKey     = isCreditLane ? 'Credit' : 'Cash';
-        // Display name prefers the per-spend note (what the user typed when
-        // logging it — e.g. "Coffee at Bell Lane"), falling back to the
-        // envelope name when the note is empty. Without this, every entry
-        // shows up as the envelope name (e.g. "Personal Spend") in the CC
-        // tile, ledger, and on-this-date card.
-        const displayName = entry.note?.trim() ? entry.note.trim() : item.name;
+      const occDateStr   = fmtDate(occDate);
+      const remainingDate = (period === currentPeriod && occDateStr < todayStr)
+        ? fmtDate(lastDayOfMonth(todayDate))
+        : occDateStr;
+      if (remainingDate >= walkStartStr && remainingDate <= to) {
         placeOnDay(
           {
-            date: entry.date, budgetItemId: item.id, txId: null, name: displayName,
+            date: remainingDate, budgetItemId: item.id, txId: null, name: item.name,
             category: item.category, type: item.type, bucket: item.bucket,
-            payment: routeKey, forecastAmount: 0,
-            overrideAmount: null, actualAmount: entry.amount,
-            delta: null, isReconciled: true,
+            payment: item.payment, forecastAmount: remaining,
+            overrideAmount: null, actualAmount: null,
+            delta: null, isReconciled: false,
           },
-          routeKey, entry.date,
-          { isConfirmed: true, isPending: false, isProjected: false },
+          item.payment, remainingDate,
+          { isConfirmed: false, isPending: false, isProjected: true },
+          true, // isEnvelopeRemainder — excluded from actualsEntries
         );
-      }
-
-      // Project remaining budget only for the current and future periods.
-      if (remaining > 0 && period >= currentPeriod) {
-        const occDateStr   = fmtDate(occDate);
-        const remainingDate = (period === currentPeriod && occDateStr < todayStr)
-          ? fmtDate(lastDayOfMonth(todayDate))
-          : occDateStr;
-
-        if (remainingDate >= walkStartStr && remainingDate <= to) {
-          placeOnDay(
-            {
-              date: remainingDate, budgetItemId: item.id, txId: null, name: item.name,
-              category: item.category, type: item.type, bucket: item.bucket,
-              payment: item.payment, forecastAmount: remaining,
-              overrideAmount: null, actualAmount: null,
-              delta: null, isReconciled: false,
-            },
-            item.payment, remainingDate,
-            { isConfirmed: false, isPending: false, isProjected: true },
-            true, // isEnvelopeRemainder — excluded from actualsEntries
-          );
-        }
       }
     }
   }
 
-  // 5b. Past-period credit spend. The envelope loop only walks occurrences
-  //     within [walkStart, toDate], so periods strictly before currentPeriod
-  //     are never visited. Cash spend in those periods has already settled
-  //     against the bank; credit spend is still outstanding on the card and
-  //     bundles onto the upcoming statement.
-  const itemById = new Map(items.map(i => [i.id, i] as const));
-  for (const s of spendRows) {
-    if (s.payment !== 'credit') continue;
-    if (s.date.slice(0, 7) >= currentPeriod) continue;
-    const item = itemById.get(s.budget_item_id);
-    if (!item) continue;
-    // Same note-vs-envelope name preference as step 5 above — keep them in
-    // sync or we'll get inconsistent labels between current and prior periods.
-    const displayName = s.note?.trim() ? s.note.trim() : item.name;
-    placeOnDay(
-      {
-        date: s.date, budgetItemId: item.id, txId: null, name: displayName,
-        category: item.category, type: item.type, bucket: item.bucket,
-        payment: 'Credit', forecastAmount: 0,
-        overrideAmount: null, actualAmount: s.amount,
-        delta: null, isReconciled: true,
-      },
-      'Credit', s.date,
-      { isConfirmed: true, isPending: false, isProjected: false },
-    );
-  }
+  // (Past-period credit spend no longer needs a separate pass — the per-spend
+  //  loop in step 5 now places every logged spend regardless of period.)
 
   // Day-by-day balance computation
   let balP = initBalP,  balM = initBalM;
