@@ -136,9 +136,28 @@ function ProposalRow({ p }: { p: ImportProposal }) {
   );
 }
 
+// Plain-text dump of the preview so it can be copied and pasted for review.
+function buildPreviewText(r: ImportPreviewResult): string {
+  const out: string[] = [`CSV import preview · ${r.account} · ${r.parsed} rows considered`];
+  for (const { status, label } of VISIBLE_GROUPS) {
+    const group = r.rows.filter(x => x.status === status);
+    if (!group.length) continue;
+    out.push(`\n## ${label} (${group.length})`);
+    for (const [target, items] of groupByTarget(group)) {
+      out.push(`  ${target} · ${items.length}`);
+      for (const p of items) {
+        out.push(`    ${p.valueDate}  ${p.amount.toFixed(2).padStart(9)}  ${p.confidence.padEnd(4)}  ${p.description}`);
+      }
+    }
+  }
+  out.push(`\nskipped: ${r.summary.matched} matched, ${r.summary.seen} already imported`);
+  return out.join('\n');
+}
+
 function ImportPreview({ result }: { result: ImportPreviewResult }) {
   const { rows, summary } = result;
   const skipped = summary.matched + summary.seen;
+  const [copied, setCopied] = useState(false);
   return (
     <div style={{ marginTop: 14 }}>
       <div style={{ fontSize: 11.5, color: 'var(--ink-2)', marginBottom: 8 }}>
@@ -167,8 +186,19 @@ function ImportPreview({ result }: { result: ImportPreviewResult }) {
         );
       })}
 
-      <div className="reco-pill" style={{ display: 'inline-block', marginTop: 4 }}>
-        Dry run · nothing written yet — commit lands in the next phase
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+        <span className="reco-pill">Dry run · nothing written yet — commit lands in the next phase</span>
+        <button
+          className="btn ghost"
+          style={{ fontSize: 11, padding: '3px 10px' }}
+          onClick={() => {
+            navigator.clipboard.writeText(buildPreviewText(result));
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+          }}
+        >
+          {copied ? 'Copied ✓' : 'Copy output'}
+        </button>
       </div>
     </div>
   );
@@ -178,6 +208,10 @@ export default function ReconciliationPanel({ bucketFilter = 'all' }: { bucketFi
   const qc = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [account, setAccount] = useState<ImportAccount>('maple-debit');
+  const [from, setFrom] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+  });
   const [dragging, setDragging] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -185,7 +219,7 @@ export default function ReconciliationPanel({ bucketFilter = 'all' }: { bucketFi
   const { data: envData } = useQuery({ queryKey: QUERY_KEYS.envelopes, queryFn: getEnvelopes });
 
   const preview = useMutation({
-    mutationFn: (csv: string) => previewImport(account, csv),
+    mutationFn: (csv: string) => previewImport(account, csv, from),
   });
 
   const remove = useMutation({
@@ -223,6 +257,13 @@ export default function ReconciliationPanel({ bucketFilter = 'all' }: { bucketFi
             <option value="maple-debit">Maple debit</option>
             <option value="personal-cc">Personal CC</option>
           </select>
+          <input
+            type="date"
+            value={from}
+            onChange={(e) => setFrom(e.target.value)}
+            style={{ background: 'var(--paper)', border: '1px solid var(--line)', borderRadius: 6, padding: '2px 6px', fontSize: 11, color: 'var(--ink-2)' }}
+            title="Ignore rows before this date"
+          />
           <button
             className="btn ghost"
             onClick={() => setShowForm(v => !v)}

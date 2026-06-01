@@ -156,9 +156,11 @@ export interface PreviewResult {
   summary: Record<ProposalStatus, number> & { newOutflow: number };
 }
 
-export function previewImport(account: ImportAccount, csv: string): PreviewResult {
+export function previewImport(account: ImportAccount, csv: string, from?: string): PreviewResult {
   const { bucket, lane } = ACCOUNT_META[account];
-  const rows = parseCommBankCsv(csv);
+  // Optional start cutoff (by value-date) — lets the user scope to e.g. May
+  // and ignore earlier rows that were never fully logged.
+  const rows = parseCommBankCsv(csv).filter(r => !from || r.valueDate >= from);
 
   const items = db
     .prepare('SELECT id, name, type, payment, forecast_amount FROM budget_items WHERE bucket = ? AND deleted_at IS NULL')

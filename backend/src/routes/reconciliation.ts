@@ -14,6 +14,7 @@ export const reconciliationRouter = Router();
 const ImportPreviewSchema = z.object({
   account: z.enum(['maple-debit', 'personal-cc']),
   csv:     z.string().min(1, 'csv body is required'),
+  from:    DateStr.optional(),
 });
 
 reconciliationRouter.post('/import/preview', (req, res) => {
@@ -21,7 +22,7 @@ reconciliationRouter.post('/import/preview', (req, res) => {
   if (!result.success) {
     return res.status(400).json({ error: result.error.errors[0].message, code: 'VALIDATION_ERROR' });
   }
-  return res.json(previewImport(result.data.account, result.data.csv));
+  return res.json(previewImport(result.data.account, result.data.csv, result.data.from));
 });
 
 interface ReconRow {

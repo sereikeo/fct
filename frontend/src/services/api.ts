@@ -281,7 +281,7 @@ export interface ImportPreviewResult {
   summary: Record<ImportStatus, number> & { newOutflow: number };
 }
 
-export async function previewImport(account: ImportAccount, csv: string): Promise<ImportPreviewResult> {
-  const { data } = await client.post('/reconciliation/import/preview', { account, csv });
+export async function previewImport(account: ImportAccount, csv: string, from?: string): Promise<ImportPreviewResult> {
+  const { data } = await client.post('/reconciliation/import/preview', { account, csv, from });
   return data;
 }
