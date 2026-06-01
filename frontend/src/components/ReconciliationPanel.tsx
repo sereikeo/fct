@@ -158,6 +158,7 @@ function ImportPreview({ result }: { result: ImportPreviewResult }) {
   const { rows, summary } = result;
   const skipped = summary.matched + summary.seen;
   const [copied, setCopied] = useState(false);
+  const [showText, setShowText] = useState(false);
   return (
     <div style={{ marginTop: 14 }}>
       <div style={{ fontSize: 11.5, color: 'var(--ink-2)', marginBottom: 8 }}>
@@ -192,14 +193,32 @@ function ImportPreview({ result }: { result: ImportPreviewResult }) {
           className="btn ghost"
           style={{ fontSize: 11, padding: '3px 10px' }}
           onClick={() => {
-            navigator.clipboard.writeText(buildPreviewText(result));
-            setCopied(true);
-            setTimeout(() => setCopied(false), 1500);
+            const text = buildPreviewText(result);
+            setShowText(true);
+            // Clipboard API only works in a secure context (HTTPS/localhost);
+            // over plain HTTP it's undefined, so the textarea below is the
+            // guaranteed fallback (auto-selected for Ctrl+C).
+            try {
+              if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(text)
+                  .then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); })
+                  .catch(() => {});
+              }
+            } catch { /* fallback textarea below */ }
           }}
         >
           {copied ? 'Copied ✓' : 'Copy output'}
         </button>
       </div>
+      {showText && (
+        <textarea
+          readOnly
+          autoFocus
+          value={buildPreviewText(result)}
+          onFocus={(e) => e.currentTarget.select()}
+          style={{ width: '100%', height: 200, marginTop: 8, boxSizing: 'border-box', fontFamily: 'JetBrains Mono, monospace', fontSize: 11, lineHeight: 1.4, background: 'var(--paper)', border: '1px solid var(--line)', borderRadius: 8, padding: 8, color: 'var(--ink)' }}
+        />
+      )}
     </div>
   );
 }
