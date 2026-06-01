@@ -96,3 +96,23 @@ CREATE TABLE IF NOT EXISTS cc_statement_overrides (
   created_at      TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- CSV reconciliation import ledger. Fingerprints every bank row ever ingested
+-- (hash of account|value-date|description|amount) so re-imports and overlapping
+-- date ranges are idempotent — a row that's been seen is skipped on the next
+-- run regardless of whether it was created or matched. `action` records how the
+-- row resolved; spend_id / recon_id link to anything it created on commit.
+CREATE TABLE IF NOT EXISTS import_log (
+  id            TEXT PRIMARY KEY,
+  fingerprint   TEXT NOT NULL UNIQUE,
+  account       TEXT NOT NULL,
+  bank_date     TEXT NOT NULL,
+  description   TEXT NOT NULL,
+  amount        REAL NOT NULL,
+  action        TEXT NOT NULL,
+  spend_id      TEXT REFERENCES spend_log(id),
+  recon_id      TEXT REFERENCES reconciliation(id),
+  imported_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_import_log_fingerprint ON import_log (fingerprint);

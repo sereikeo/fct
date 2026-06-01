@@ -4,8 +4,25 @@ import { v4 as uuidv4 } from 'uuid';
 import db from '../db';
 import { IdSchema, DateStr } from '../lib/validate';
 import type { ReconciliationRecord } from '../types';
+import { previewImport } from '../services/reconcileImport';
 
 export const reconciliationRouter = Router();
+
+// CSV import — Phase 1: preview only (dry-run, NO writes). Parses a bank CSV,
+// diffs every row against existing logged data + prior imports, and returns a
+// proposed action per row for the user to review before any commit.
+const ImportPreviewSchema = z.object({
+  account: z.enum(['maple-debit', 'personal-cc']),
+  csv:     z.string().min(1, 'csv body is required'),
+});
+
+reconciliationRouter.post('/import/preview', (req, res) => {
+  const result = ImportPreviewSchema.safeParse(req.body);
+  if (!result.success) {
+    return res.status(400).json({ error: result.error.errors[0].message, code: 'VALIDATION_ERROR' });
+  }
+  return res.json(previewImport(result.data.account, result.data.csv));
+});
 
 interface ReconRow {
   id: string;

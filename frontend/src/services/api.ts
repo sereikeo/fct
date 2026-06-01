@@ -253,3 +253,35 @@ export async function patchTransaction(
 ): Promise<void> {
   await client.patch(`/transactions/${id}`, body);
 }
+
+// --- CSV reconciliation import (Phase 1: preview / dry-run, no writes) ---
+export type ImportAccount = 'maple-debit' | 'personal-cc';
+export type ImportStatus =
+  | 'seen' | 'matched' | 'new-spend' | 'reconcile-bill' | 'income' | 'unmatched';
+
+export interface ImportProposal {
+  fingerprint: string;
+  postDate: string;
+  valueDate: string;
+  amount: number;
+  description: string;
+  status: ImportStatus;
+  confidence: 'high' | 'med' | 'low';
+  targetItemId: string | null;
+  targetName: string | null;
+  bucket: Bucket | null;
+  lane: 'cash' | 'credit' | null;
+  note: string | null;
+}
+
+export interface ImportPreviewResult {
+  account: ImportAccount;
+  parsed: number;
+  rows: ImportProposal[];
+  summary: Record<ImportStatus, number> & { newOutflow: number };
+}
+
+export async function previewImport(account: ImportAccount, csv: string): Promise<ImportPreviewResult> {
+  const { data } = await client.post('/reconciliation/import/preview', { account, csv });
+  return data;
+}
